@@ -964,3 +964,124 @@ fn delete_sheet_preserving_styles_raw_rejects_deleting_last_sheet() {
         .expect_err("last sheet");
     assert!(err.to_string().contains("last remaining sheet"));
 }
+
+#[test]
+fn rename_sheet_preserving_styles_raw_requires_source_selector() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/>
+    <table:table table:name="S2"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err = ContentXml::rename_sheet_preserving_styles_raw(xml, None, None, "X")
+        .expect_err("selector required");
+    assert!(err.to_string().contains("missing source sheet selector"));
+}
+
+#[test]
+fn delete_sheet_preserving_styles_raw_requires_source_selector() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/>
+    <table:table table:name="S2"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err =
+        ContentXml::delete_sheet_preserving_styles_raw(xml, None, None).expect_err("selector");
+    assert!(err.to_string().contains("missing source sheet selector"));
+}
+
+#[test]
+fn rename_sheet_preserving_styles_raw_rejects_missing_table_name_attribute() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/>
+    <table:table table:style-name="ta1"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err = ContentXml::rename_sheet_preserving_styles_raw(xml, Some("S1"), None, "New")
+        .expect_err("table without name");
+    assert!(err.to_string().contains("table without name"));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_handles_nested_table_cell_tags_inside_target_cell() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row>
+        <table:table-cell office:value-type="string">
+          <table:table-cell/>
+          <text:p>old</text:p>
+        </table:table-cell>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        0,
+        0,
+        &CellValue::String("new".to_string()),
+    )
+    .expect("set");
+    assert!(updated.contains("<text:p>new</text:p>"));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_repeated_row_capture_writes_after_target_gap() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row table:number-rows-repeated="2">
+        <table:table-cell table:number-columns-repeated="3"/>
+        <table:table-cell/>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        1,
+        1,
+        &CellValue::String("B2".to_string()),
+    )
+    .expect("set");
+    assert!(updated.contains("<text:p>B2</text:p>"));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_repeated_row_capture_handles_invalid_repeat_number() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row table:number-rows-repeated="2">
+        <table:table-cell table:number-columns-repeated="x"/>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        1,
+        0,
+        &CellValue::String("A2".to_string()),
+    )
+    .expect("set");
+    assert!(updated.contains("<text:p>A2</text:p>"));
+}

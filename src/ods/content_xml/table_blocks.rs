@@ -256,9 +256,28 @@ impl ContentXml {
 
     fn extract_attr_value(tag: &str, key: &str) -> Option<String> {
         let pattern = format!("{key}=\"");
-        let start = tag.find(&pattern)? + pattern.len();
-        let end_rel = tag[start..].find('"')?;
-        Some(tag[start..start + end_rel].to_string())
+        let bytes = tag.as_bytes();
+        let mut from = 0usize;
+
+        while let Some(rel) = tag[from..].find(&pattern) {
+            let attr_start = from + rel;
+            let prev_ok = if attr_start == 0 {
+                true
+            } else {
+                matches!(
+                    bytes[attr_start - 1],
+                    b' ' | b'\t' | b'\n' | b'\r' | b'<'
+                )
+            };
+            if prev_ok {
+                let value_start = attr_start + pattern.len();
+                let end_rel = tag[value_start..].find('"')?;
+                return Some(tag[value_start..value_start + end_rel].to_string());
+            }
+            from = attr_start + key.len();
+        }
+
+        None
     }
 
     fn rename_first_table_name(table_xml: &str, new_name: &str) -> Result<String, AppError> {

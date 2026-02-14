@@ -1,25 +1,25 @@
 # LibreOffice Calc MCP (Rust)
 
-Servidor MCP (Model Context Protocol) en Rust para manipular ficheros `.ods` (LibreOffice Calc) en local, sin abrir LibreOffice.
+A Rust MCP (Model Context Protocol) server to manipulate local `.ods` files (LibreOffice Calc) without opening LibreOffice.
 
-## 1. Descripción general
+## 1. Overview
 
-Este proyecto implementa un servidor MCP por `stdio` que expone tools para crear, leer y modificar hojas de cálculo ODS.
+This project implements a `stdio` MCP server that exposes tools to create, read, and modify ODS spreadsheets.
 
-Objetivos del MVP actual:
-- Operar sobre rutas locales `.ods`.
-- Mantener respuestas JSON simples para consumo por agentes LLM.
-- Entregar una base modular, testeada y lista para integrar en clientes MCP.
+Current MVP goals:
+- Work with local `.ods` paths.
+- Keep JSON responses simple for LLM agent consumption.
+- Provide a modular, tested base ready to integrate with MCP clients.
 
-Estado actual:
-- MVP funcional completado.
-- Build/test/clippy en verde.
-- Release local generado (`target/release/mcp-ods.exe`).
-- Rama principal publicada en GitHub.
+Current status:
+- Functional MVP completed.
+- Build/test/clippy all green.
+- Local release built (`target/release/mcp-ods.exe`).
+- Main branch published on GitHub.
 
-## 2. Funcionalidades (tools MCP)
+## 2. Features (MCP tools)
 
-Tools implementadas:
+Implemented tools:
 1. `create_ods`
 2. `get_sheets`
 3. `get_sheet_content`
@@ -29,20 +29,20 @@ Tools implementadas:
 7. `get_cell_value`
 8. `set_range_values`
 
-### Resumen rápido de cada tool
+### Quick summary per tool
 
-- `create_ods`: crea un `.ods` válido desde cero (incluyendo estructura ZIP mínima requerida).
-- `get_sheets`: devuelve nombres de hojas en orden interno.
-- `get_sheet_content`: devuelve matriz 2D (`mode=matrix`) con límites y opción de trimming.
-- `set_cell_value`: escribe una celda A1 concreta.
-- `duplicate_sheet`: clona una hoja y la inserta tras la original.
-- `add_sheet`: añade hoja vacía (inicio o final).
-- `get_cell_value`: devuelve valor tipado de una celda.
-- `set_range_values`: escribe bloque matricial desde una celda inicial.
+- `create_ods`: creates a valid `.ods` file from scratch (including required minimal ZIP structure).
+- `get_sheets`: returns sheet names in internal order.
+- `get_sheet_content`: returns a 2D matrix (`mode=matrix`) with limits and optional trimming.
+- `set_cell_value`: writes a single A1 cell.
+- `duplicate_sheet`: clones a sheet and inserts it right after the original.
+- `add_sheet`: adds an empty sheet (start or end).
+- `get_cell_value`: returns a typed value for one cell.
+- `set_range_values`: writes a matrix block starting at a given cell.
 
-## 3. Arquitectura del proyecto
+## 3. Project architecture
 
-Estructura principal:
+Main structure:
 
 ```text
 src/
@@ -82,39 +82,39 @@ test/
   blackbox/
 ```
 
-Diseño por capas:
-- `mcp/*`: transporte stdio + JSON-RPC + dispatch de tools.
-- `tools/*`: contrato de entrada/salida por tool y reglas de negocio.
-- `ods/*`: lectura/escritura ODS (ZIP + XML) y modelo de workbook.
-- `common/*`: errores y utilidades compartidas.
+Layered design:
+- `mcp/*`: stdio transport + JSON-RPC + tool dispatch.
+- `tools/*`: input/output contracts and business rules per tool.
+- `ods/*`: ODS read/write (ZIP + XML) and workbook model.
+- `common/*`: shared errors and utilities.
 
-## 4. Requisitos
+## 4. Requirements
 
-- Rust estable (recomendado: toolchain actualizado).
+- Stable Rust (updated toolchain recommended).
 - Cargo.
-- Windows, Linux o macOS (el proyecto usa stdio y filesystem local).
+- Windows, Linux, or macOS (the project uses stdio + local filesystem).
 
-## 5. Cómo compilar y testear
+## 5. Build and test
 
-### Build debug
+### Debug build
 
 ```bash
 cargo build
 ```
 
-### Build release
+### Release build
 
 ```bash
 cargo build --release
 ```
 
-### Formato
+### Format
 
 ```bash
 cargo fmt
 ```
 
-### Lint estricto
+### Strict lint
 
 ```bash
 cargo clippy -- -D warnings
@@ -126,48 +126,48 @@ cargo clippy -- -D warnings
 cargo test
 ```
 
-## 6. Ejecución manual del servidor
+## 6. Run the server manually
 
-### Binario debug
+### Debug binary
 
 ```bash
 cargo run
 ```
 
-### Binario release
+### Release binary
 
 ```bash
 ./target/release/mcp-ods
 ```
 
-En Windows:
+On Windows:
 
 ```powershell
 .\target\release\mcp-ods.exe
 ```
 
-El servidor espera una petición JSON-RPC por línea en `stdin` y escribe respuesta JSON-RPC en `stdout`.
+The server expects one JSON-RPC request per line on `stdin` and writes JSON-RPC responses to `stdout`.
 
-## 7. Ejemplos JSON-RPC
+## 7. JSON-RPC examples
 
 ### `create_ods`
 
 Request:
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"create_ods","params":{"path":"./demo.ods","overwrite":true,"initial_sheet_name":"Hoja1"}}
+{"jsonrpc":"2.0","id":1,"method":"create_ods","params":{"path":"./demo.ods","overwrite":true,"initial_sheet_name":"Sheet1"}}
 ```
 
-Response esperada:
+Expected response:
 
 ```json
-{"jsonrpc":"2.0","id":1,"result":{"path":".../demo.ods","sheets":["Hoja1"]}}
+{"jsonrpc":"2.0","id":1,"result":{"path":".../demo.ods","sheets":["Sheet1"]}}
 ```
 
 ### `set_cell_value`
 
 ```json
-{"jsonrpc":"2.0","id":2,"method":"set_cell_value","params":{"path":"./demo.ods","sheet":{"index":0},"cell":"B2","value":{"type":"string","data":"hola"}}}
+{"jsonrpc":"2.0","id":2,"method":"set_cell_value","params":{"path":"./demo.ods","sheet":{"index":0},"cell":"B2","value":{"type":"string","data":"hello"}}}
 ```
 
 ### `get_cell_value`
@@ -176,17 +176,17 @@ Response esperada:
 {"jsonrpc":"2.0","id":3,"method":"get_cell_value","params":{"path":"./demo.ods","sheet":{"index":0},"cell":"B2"}}
 ```
 
-También se soporta la forma MCP envelope `tools/call`:
+The MCP envelope `tools/call` is also supported:
 
 ```json
 {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"get_sheets","arguments":{"path":"./demo.ods"}}}
 ```
 
-## 8. Configuración para enlazarlo con un cliente de agentes
+## 8. Configuration for agent clients
 
-Este servidor usa transporte `stdio`. Un cliente MCP debe lanzar el binario y hablar JSON-RPC por stdin/stdout.
+This server uses `stdio` transport. An MCP client must launch the binary and communicate JSON-RPC via stdin/stdout.
 
-### Config genérica (conceptual)
+### Generic configuration (conceptual)
 
 ```json
 {
@@ -199,29 +199,29 @@ Este servidor usa transporte `stdio`. Un cliente MCP debe lanzar el binario y ha
 }
 ```
 
-Puntos importantes:
-- Usa ruta absoluta al binario para evitar problemas de working directory.
-- Si ejecutas en debug, puedes apuntar a `target/debug/mcp-ods(.exe)`.
-- Asegura permisos de lectura/escritura sobre las rutas `.ods` que vaya a tocar el agente.
+Important notes:
+- Use an absolute binary path to avoid working-directory issues.
+- For debug runs, you can point to `target/debug/mcp-ods(.exe)`.
+- Ensure read/write permissions for the `.ods` paths your agent will touch.
 
-## 9. Tests: estrategia actual
+## 9. Test strategy
 
-Hay dos niveles:
+There are two levels:
 
-- Unitarios (`test/common`, `test/mcp`, `test/ods`, `test/tools`):
-  - Validación de utilidades, parseos y handlers por módulo.
-- Integración/blackbox (`test/blackbox/*`):
-  - Flujos end-to-end por tool y comportamiento sobre ficheros `.ods` reales temporales.
+- Unit tests (`test/common`, `test/mcp`, `test/ods`, `test/tools`):
+  - Validation of utilities, parsing, and module handlers.
+- Integration/blackbox tests (`test/blackbox/*`):
+  - End-to-end tool flows on real temporary `.ods` files.
 
-Cobertura actual incluye:
-- operaciones CRUD de hojas,
-- lectura/escritura de celdas y rangos,
-- validación de errores,
-- serialización/deserialización de valores tipados.
+Current coverage includes:
+- sheet CRUD operations,
+- cell/range read and write,
+- error validation,
+- typed value serialization/deserialization.
 
-## 10. Errores y códigos
+## 10. Errors and codes
 
-Errores tipados principales (`src/common/errors.rs`):
+Main typed errors (`src/common/errors.rs`):
 - `InvalidPath`
 - `FileNotFound`
 - `AlreadyExists`
@@ -233,30 +233,30 @@ Errores tipados principales (`src/common/errors.rs`):
 - `ZipError`
 - `IoError`
 
-Cada error se mapea a código numérico estable para clientes MCP.
+Each error maps to a stable numeric code for MCP clients.
 
-## 11. Limitaciones conocidas del MVP
+## 11. Known MVP limitations
 
-- `get_sheet_content` soporta `mode="matrix"`.
-- `set_range_values` escribe actualmente valores como `string`.
-- El modelo XML cubre el flujo de datos principal; no preserva de forma exhaustiva todos los detalles avanzados de formato/fórmulas complejas fuera del modelo actual.
+- `get_sheet_content` supports `mode="matrix"`.
+- `set_range_values` currently writes values as `string`.
+- The XML model covers the main data path, but does not fully preserve all advanced formatting/formula details outside the current model.
 
-## 12. Roadmap sugerido
+## 12. Suggested roadmap
 
-Siguientes mejoras recomendadas:
-1. Soporte explícito de fórmulas y tipos mixtos en `set_range_values`.
-2. Preservación ampliada de estilos/atributos avanzados por celda.
-3. Tooling MCP adicional (`initialize`, `tools/list`) si se necesita compatibilidad estricta con ciertos clientes.
-4. Benchmarks y tests de regresión con ODS grandes.
+Recommended next improvements:
+1. Explicit formula and mixed-type support in `set_range_values`.
+2. Wider preservation of advanced cell style/attributes.
+3. Additional MCP tooling (`initialize`, `tools/list`) if strict compatibility is required for specific clients.
+4. Benchmarks and regression tests with large ODS files.
 
-## 13. Historial de hitos (resumen)
+## 13. Milestones summary
 
-- `v0.1.0` etiquetado como release MVP local.
-- Commits recientes:
-  - implementación MCP ODS,
-  - ampliación/reorganización de tests,
-  - comentarios explicativos para onboarding.
+- `v0.1.0` tagged as local MVP release.
+- Recent commits include:
+  - MCP ODS implementation,
+  - test expansion/reorganization,
+  - explanatory comments for onboarding.
 
-## 14. Licencia
+## 14. License
 
-Pendiente de definir. Añadir `LICENSE` según la política del repositorio.
+Pending definition. Add a `LICENSE` file according to repository policy.

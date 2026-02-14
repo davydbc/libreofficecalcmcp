@@ -6,3 +6,4 @@ mod get_sheet_content_test;
 mod get_sheets_test;
 mod set_cell_value_test;
 mod set_range_values_test;
+mod sheet_ref_test;

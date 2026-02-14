@@ -214,6 +214,10 @@ impl Dispatcher {
                         "index": { "type": "integer", "minimum": 0 }
                     },
                     "required": ["index"]
+                },
+                {
+                    "type": "string",
+                    "description": "Sheet name or JSON string like {\"name\":\"Hoja1\"} or {\"index\":0}"
                 }
             ]
         })

@@ -59,7 +59,62 @@ fn dispatcher_allows_direct_tool_invocation_path() {
         Some(json!({ "path": file_path.to_string_lossy(), "overwrite": true })),
     )
     .expect("create");
-    let out = Dispatcher::dispatch("get_sheets", Some(json!({ "path": file_path.to_string_lossy() })))
-        .expect("get_sheets");
+    let out = Dispatcher::dispatch(
+        "get_sheets",
+        Some(json!({ "path": file_path.to_string_lossy() })),
+    )
+    .expect("get_sheets");
     assert_eq!(out["sheets"], json!(["Hoja1"]));
+}
+
+#[test]
+fn dispatcher_tools_call_accepts_json_encoded_sheet_ref_string() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file_path = dir.path().join("sheet_ref_string.ods");
+
+    Dispatcher::dispatch(
+        "tools/call",
+        Some(json!({
+            "name": "create_ods",
+            "arguments": {
+                "path": file_path.to_string_lossy(),
+                "overwrite": true
+            }
+        })),
+    )
+    .expect("create");
+
+    let set_result = Dispatcher::dispatch(
+        "tools/call",
+        Some(json!({
+            "name": "set_cell_value",
+            "arguments": {
+                "path": file_path.to_string_lossy(),
+                "sheet": "{\"name\":\"Hoja1\"}",
+                "cell": "A1",
+                "value": { "type": "string", "data": "ok" }
+            }
+        })),
+    )
+    .expect("set");
+    assert_eq!(set_result["isError"], json!(false));
+
+    let get_result = Dispatcher::dispatch(
+        "tools/call",
+        Some(json!({
+            "name": "get_cell_value",
+            "arguments": {
+                "path": file_path.to_string_lossy(),
+                "sheet": "{\"index\":\"0\"}",
+                "cell": "A1"
+            }
+        })),
+    )
+    .expect("get");
+
+    assert_eq!(get_result["isError"], json!(false));
+    assert_eq!(
+        get_result["structuredContent"]["value"],
+        json!({"type":"string","data":"ok"})
+    );
 }

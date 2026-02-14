@@ -3,15 +3,9 @@ use crate::common::fs::FsUtil;
 use crate::common::json::JsonUtil;
 use crate::ods::ods_file::OdsFile;
 use crate::ods::sheet_model::CellValue;
+use crate::tools::sheet_ref::SheetRef;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum SheetRef {
-    Name { name: String },
-    Index { index: usize },
-}
 
 #[derive(Debug, Deserialize)]
 struct GetSheetContentInput {
@@ -60,7 +54,7 @@ pub fn handle(params: Value) -> Result<Value, AppError> {
     }
 
     let workbook = OdsFile::read_workbook(&path)?;
-    let (sheet_index, sheet_name) = resolve_sheet(&workbook, input.sheet)?;
+    let (sheet_index, sheet_name) = input.sheet.resolve_in_workbook(&workbook)?;
     let sheet = &workbook.sheets[sheet_index];
 
     let row_limit = std::cmp::min(sheet.rows.len(), input.max_rows);
@@ -124,24 +118,4 @@ fn trim_trailing(mut matrix: Vec<Vec<String>>) -> (usize, usize, Vec<Vec<String>
     }
 
     (matrix.len(), max_col, matrix)
-}
-
-fn resolve_sheet(
-    workbook: &crate::ods::sheet_model::Workbook,
-    reference: SheetRef,
-) -> Result<(usize, String), AppError> {
-    // Sheet selectors accept either {name} or {index}.
-    match reference {
-        SheetRef::Name { name } => workbook
-            .sheet_index_by_name(&name)
-            .map(|idx| (idx, workbook.sheets[idx].name.clone()))
-            .ok_or(AppError::SheetNotFound(name)),
-        SheetRef::Index { index } => {
-            if index >= workbook.sheets.len() {
-                Err(AppError::SheetNotFound(index.to_string()))
-            } else {
-                Ok((index, workbook.sheets[index].name.clone()))
-            }
-        }
-    }
 }

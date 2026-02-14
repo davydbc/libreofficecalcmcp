@@ -5,15 +5,9 @@ use crate::ods::cell_address::CellAddress;
 use crate::ods::content_xml::ContentXml;
 use crate::ods::ods_file::OdsFile;
 use crate::ods::sheet_model::CellValue;
+use crate::tools::sheet_ref::SheetRef;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum SheetRef {
-    Name { name: String },
-    Index { index: usize },
-}
 
 #[derive(Debug, Deserialize)]
 struct SetCellValueInput {
@@ -40,7 +34,7 @@ pub fn handle(params: Value) -> Result<Value, AppError> {
 
     let original_content = OdsFile::read_content_xml(&path)?;
     let sheet_names = ContentXml::sheet_names_from_content_raw(&original_content)?;
-    let (sheet_index, sheet_name) = resolve_sheet(&sheet_names, input.sheet)?;
+    let (sheet_index, sheet_name) = input.sheet.resolve_in_names(&sheet_names)?;
     let address = CellAddress::parse(&input.cell)?;
 
     let (target_row, target_col) = ContentXml::resolve_merged_anchor_raw(
@@ -63,22 +57,4 @@ pub fn handle(params: Value) -> Result<Value, AppError> {
         sheet: sheet_name,
         cell: input.cell,
     })
-}
-
-fn resolve_sheet(sheet_names: &[String], reference: SheetRef) -> Result<(usize, String), AppError> {
-    // Shared helper to map name/index selectors into a concrete sheet index.
-    match reference {
-        SheetRef::Name { name } => sheet_names
-            .iter()
-            .position(|n| n == &name)
-            .map(|idx| (idx, sheet_names[idx].clone()))
-            .ok_or(AppError::SheetNotFound(name)),
-        SheetRef::Index { index } => {
-            if index >= sheet_names.len() {
-                Err(AppError::SheetNotFound(index.to_string()))
-            } else {
-                Ok((index, sheet_names[index].clone()))
-            }
-        }
-    }
 }

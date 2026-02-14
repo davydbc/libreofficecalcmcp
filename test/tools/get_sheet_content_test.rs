@@ -30,3 +30,19 @@ fn get_sheet_content_returns_matrix() {
     assert_eq!(out["rows"], 2);
     assert_eq!(out["cols"], 2);
 }
+
+#[test]
+fn get_sheet_content_rejects_unsupported_mode() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("content_invalid_mode.ods");
+    create_ods::handle(json!({ "path": path.to_string_lossy(), "overwrite": true }))
+        .expect("create");
+
+    let err = get_sheet_content::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "index": 0 },
+        "mode": "table"
+    }))
+    .expect_err("invalid mode");
+    assert!(err.to_string().contains("mode=matrix"));
+}

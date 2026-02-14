@@ -6,5 +6,6 @@ mod duplicate_sheet;
 mod get_cell_value;
 mod get_sheet_content;
 mod get_sheets;
+mod server_stdio;
 mod set_cell_value;
 mod set_range_values;

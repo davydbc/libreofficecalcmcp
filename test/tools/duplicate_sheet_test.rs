@@ -24,3 +24,24 @@ fn duplicate_sheet_creates_copy_after_source() {
     let out = get_sheets::handle(json!({ "path": path.to_string_lossy() })).expect("get sheets");
     assert_eq!(out["sheets"], json!(["Datos", "Datos (copia)"]));
 }
+
+#[test]
+fn duplicate_sheet_returns_error_for_missing_source() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("duplicate_missing_source.ods");
+
+    create_ods::handle(json!({
+        "path": path.to_string_lossy(),
+        "overwrite": true,
+        "initial_sheet_name": "Datos"
+    }))
+    .expect("create");
+
+    let err = duplicate_sheet::handle(json!({
+        "path": path.to_string_lossy(),
+        "source_sheet": { "name": "NoExiste" },
+        "new_sheet_name": "X"
+    }))
+    .expect_err("missing source");
+    assert!(err.to_string().contains("sheet not found"));
+}

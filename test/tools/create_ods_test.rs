@@ -1,6 +1,6 @@
 use mcp_ods::tools::create_ods;
 use serde_json::json;
-use std::fs::File;
+use std::fs::{self, File};
 use tempfile::tempdir;
 use zip::ZipArchive;
 
@@ -24,4 +24,18 @@ fn create_ods_creates_file() {
     assert!(zip.by_name("manifest.rdf").is_ok());
     assert!(zip.by_name("Thumbnails/thumbnail.png").is_ok());
     assert!(zip.by_name("META-INF/manifest.xml").is_ok());
+}
+
+#[test]
+fn create_ods_respects_overwrite_flag() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("create_no_overwrite.ods");
+    fs::write(&path, "dummy").expect("seed");
+
+    let err = create_ods::handle(json!({
+        "path": path.to_string_lossy(),
+        "overwrite": false
+    }))
+    .expect_err("must fail");
+    assert!(err.to_string().contains("already exists"));
 }

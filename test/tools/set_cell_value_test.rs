@@ -64,3 +64,20 @@ fn set_cell_value_does_not_fill_previous_rows_when_target_is_d4() {
     .expect("get d4");
     assert_eq!(d4["value"], json!({"type":"string","data":"value"}));
 }
+
+#[test]
+fn set_cell_value_returns_error_for_invalid_sheet_index() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("set_cell_bad_sheet.ods");
+
+    create_ods::handle(json!({ "path": path.to_string_lossy(), "overwrite": true }))
+        .expect("create");
+    let err = set_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "index": 4 },
+        "cell": "A1",
+        "value": { "type": "string", "data": "x" }
+    }))
+    .expect_err("sheet error");
+    assert!(err.to_string().contains("sheet not found"));
+}

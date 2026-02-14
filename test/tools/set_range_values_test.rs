@@ -31,3 +31,20 @@ fn set_range_values_reports_written_shape() {
     .expect("content");
     assert_eq!(content["data"][2][2], "4");
 }
+
+#[test]
+fn set_range_values_rejects_invalid_start_cell() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("range_invalid_start.ods");
+
+    create_ods::handle(json!({ "path": path.to_string_lossy(), "overwrite": true }))
+        .expect("create");
+    let err = set_range_values::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "index": 0 },
+        "start_cell": "11",
+        "data": [["a"]]
+    }))
+    .expect_err("invalid start");
+    assert!(err.to_string().contains("invalid cell address"));
+}

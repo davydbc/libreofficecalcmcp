@@ -1,3 +1,4 @@
+use mcp_ods::common::errors::AppError;
 use mcp_ods::ods::content_xml::ContentXml;
 use mcp_ods::ods::sheet_model::{CellValue, Workbook};
 
@@ -139,4 +140,55 @@ fn resolve_merged_anchor_raw_maps_covered_cell_to_top_left_anchor() {
 
     let regular = ContentXml::resolve_merged_anchor_raw(original, 0, 5, 1).expect("resolve");
     assert_eq!(regular, (5, 1));
+}
+
+#[test]
+fn duplicate_sheet_preserving_styles_raw_supports_name_and_index() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" office:version="1.2">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/><table:table table:name="S2"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let by_name =
+        ContentXml::duplicate_sheet_preserving_styles_raw(original, Some("S1"), None, "S1Copy")
+            .expect("dup name");
+    let names = ContentXml::sheet_names_from_content_raw(&by_name).expect("names");
+    assert_eq!(names, vec!["S1", "S1Copy", "S2"]);
+
+    let by_index =
+        ContentXml::duplicate_sheet_preserving_styles_raw(original, None, Some(1), "S2Copy")
+            .expect("dup index");
+    let names = ContentXml::sheet_names_from_content_raw(&by_index).expect("names");
+    assert_eq!(names, vec!["S1", "S2", "S2Copy"]);
+}
+
+#[test]
+fn duplicate_sheet_preserving_styles_raw_validates_inputs() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" office:version="1.2">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err = ContentXml::duplicate_sheet_preserving_styles_raw(original, Some("S1"), None, "S1")
+        .expect_err("duplicate name");
+    assert!(err.to_string().contains("sheet name already exists"));
+
+    let err = ContentXml::duplicate_sheet_preserving_styles_raw(original, Some("XX"), None, "N")
+        .expect_err("missing source");
+    assert!(err.to_string().contains("sheet not found"));
+
+    let err = ContentXml::duplicate_sheet_preserving_styles_raw(original, None, Some(2), "N")
+        .expect_err("index out");
+    assert!(err.to_string().contains("sheet not found"));
+}
+
+#[test]
+fn rename_first_sheet_name_raw_requires_table_name_attribute() {
+    let invalid = r#"<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"><office:body><office:spreadsheet><table:table/></office:spreadsheet></office:body></office:document-content>"#;
+    let err = ContentXml::rename_first_sheet_name_raw(invalid, "New").expect_err("missing name");
+    assert!(matches!(err, AppError::InvalidOdsFormat(_)));
 }

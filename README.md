@@ -60,7 +60,7 @@ src/
     ods_file.rs
     ods_templates.rs
     manifest.rs
-    content_xml.rs
+    
     sheet_model.rs
     cell_address.rs
   tools/

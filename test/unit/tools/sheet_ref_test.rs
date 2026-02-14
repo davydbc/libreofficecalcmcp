@@ -65,3 +65,19 @@ fn sheet_ref_rejects_invalid_shape() {
         .expect_err("invalid shape should fail");
     assert!(err.to_string().contains("either name or index"));
 }
+
+#[test]
+fn sheet_ref_rejects_invalid_index_string() {
+    let err = serde_json::from_value::<SheetInput>(json!({ "sheet": { "index": "abc" } }))
+        .expect_err("invalid index");
+    assert!(err.to_string().contains("non-negative integer"));
+}
+
+#[test]
+fn sheet_ref_rejects_invalid_json_encoded_sheet_object_string() {
+    let err = serde_json::from_value::<SheetInput>(json!({
+        "sheet": "{\"name\":"
+    }))
+    .expect_err("invalid json string");
+    assert!(err.to_string().contains("not a valid object"));
+}

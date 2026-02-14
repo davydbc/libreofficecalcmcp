@@ -16,3 +16,9 @@ fn json_from_value_returns_invalid_input_error() {
     let err = JsonUtil::from_value::<CellValue>(value).expect_err("invalid");
     assert!(err.to_string().contains("invalid input"));
 }
+
+#[test]
+fn json_to_value_returns_invalid_input_for_nan() {
+    let output = JsonUtil::to_value(CellValue::Number(f64::NAN)).expect("nan serialized");
+    assert_eq!(output, json!({"type":"number","data":null}));
+}

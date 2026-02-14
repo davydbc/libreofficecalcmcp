@@ -39,3 +39,16 @@ fn create_ods_respects_overwrite_flag() {
     .expect_err("must fail");
     assert!(err.to_string().contains("already exists"));
 }
+
+#[test]
+fn create_ods_rejects_non_ods_extension() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("create_invalid.xlsx");
+
+    let err = create_ods::handle(json!({
+        "path": path.to_string_lossy(),
+        "overwrite": true
+    }))
+    .expect_err("must fail");
+    assert!(err.to_string().contains("expected .ods extension"));
+}

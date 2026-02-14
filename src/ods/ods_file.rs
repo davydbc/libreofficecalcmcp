@@ -78,10 +78,17 @@ impl OdsFile {
         }
         drop(zip);
 
-        entries.insert(
-            "content.xml".to_string(),
-            ContentXml::render(workbook)?.into_bytes(),
-        );
+        let original_content = entries
+            .get("content.xml")
+            .and_then(|b| std::str::from_utf8(b).ok())
+            .unwrap_or_default()
+            .to_string();
+        let new_content = if original_content.is_empty() {
+            ContentXml::render(workbook)?
+        } else {
+            ContentXml::render_preserving_original(workbook, &original_content)?
+        };
+        entries.insert("content.xml".to_string(), new_content.into_bytes());
 
         let out = File::create(path)?;
         let mut writer = ZipWriter::new(out);

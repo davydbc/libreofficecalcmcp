@@ -150,3 +150,70 @@ fn server_stdio_returns_error_when_tools_call_payload_is_invalid() {
             .contains("missing tool name")
     );
 }
+
+#[test]
+fn server_stdio_ignores_empty_lines_and_continues_processing() {
+    let exe = env!("CARGO_BIN_EXE_mcp-ods");
+    let mut child = Command::new(exe)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp");
+
+    let mut stdin = child.stdin.take().expect("stdin");
+    writeln!(stdin).expect("empty line");
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc":"2.0","id":12,"method":"tools/list","params":{}})
+    )
+    .expect("request");
+    drop(stdin);
+
+    let stdout = child.stdout.take().expect("stdout");
+    let lines: Vec<String> = BufReader::new(stdout)
+        .lines()
+        .collect::<Result<_, _>>()
+        .expect("read lines");
+    let status = child.wait().expect("wait");
+    assert!(status.success());
+    assert_eq!(lines.len(), 1);
+    let list: Value = serde_json::from_str(&lines[0]).expect("json");
+    assert_eq!(list["id"], 12);
+}
+
+#[test]
+fn server_stdio_handles_notification_error_without_response() {
+    let exe = env!("CARGO_BIN_EXE_mcp-ods");
+    let mut child = Command::new(exe)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp");
+
+    let mut stdin = child.stdin.take().expect("stdin");
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc":"2.0","method":"tools/call","params":{"name":"missing_tool","arguments":{}}})
+    )
+    .expect("notification");
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc":"2.0","id":13,"method":"tools/list","params":{}})
+    )
+    .expect("request");
+    drop(stdin);
+
+    let stdout = child.stdout.take().expect("stdout");
+    let lines: Vec<String> = BufReader::new(stdout)
+        .lines()
+        .collect::<Result<_, _>>()
+        .expect("read lines");
+    let status = child.wait().expect("wait");
+    assert!(status.success());
+    assert_eq!(lines.len(), 1);
+    let list: Value = serde_json::from_str(&lines[0]).expect("json");
+    assert_eq!(list["id"], 13);
+}

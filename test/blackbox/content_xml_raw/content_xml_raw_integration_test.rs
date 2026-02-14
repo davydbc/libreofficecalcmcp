@@ -257,3 +257,64 @@ fn content_xml_raw_app_error_conversions_are_mapped() {
         AppError::XmlParseError(_)
     ));
 }
+
+#[test]
+fn content_xml_raw_set_cell_supports_number_boolean_and_empty() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet><table:table table:name="Hoja1"><table:table-row><table:table-cell/></table:table-row></table:table></office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let number = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        0,
+        0,
+        &CellValue::Number(7.5),
+    )
+    .expect("number");
+    assert!(number.contains("office:value-type=\"float\""));
+    assert!(number.contains("office:value=\"7.5\""));
+
+    let boolean = ContentXml::set_cell_value_preserving_styles_raw(
+        &number,
+        0,
+        0,
+        0,
+        &CellValue::Boolean(true),
+    )
+    .expect("bool");
+    assert!(boolean.contains("office:value-type=\"boolean\""));
+    assert!(boolean.contains("office:boolean-value=\"true\""));
+
+    let empty = ContentXml::set_cell_value_preserving_styles_raw(
+        &boolean,
+        0,
+        0,
+        0,
+        &CellValue::Empty,
+    )
+    .expect("empty");
+    assert!(empty.contains("<table:table-cell"));
+    assert!(!empty.contains("office:boolean-value=\"true\""));
+}
+
+#[test]
+fn content_xml_raw_set_cell_writes_at_row_end_and_preserves_style() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet><table:table table:name="Hoja1"><table:table-row>
+    <table:table-cell table:style-name="ce5"/>
+  </table:table-row></table:table></office:spreadsheet></office:body>
+</office:document-content>"#;
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        0,
+        2,
+        &CellValue::String("C1".to_string()),
+    )
+    .expect("set");
+    assert!(updated.contains("<text:p>C1</text:p>"));
+    assert!(updated.contains("table:number-columns-repeated=\"1\"") || updated.contains("table:style-name=\"ce5\""));
+}

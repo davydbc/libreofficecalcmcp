@@ -49,6 +49,37 @@ impl ContentXml {
         Ok(out)
     }
 
+    pub fn add_sheet_preserving_styles_raw(
+        original_content: &str,
+        sheet_name: &str,
+        position: &str,
+    ) -> Result<String, AppError> {
+        let tables = Self::find_table_blocks(original_content)?;
+        if tables.is_empty() {
+            return Err(AppError::InvalidOdsFormat(
+                "no table:table blocks found".to_string(),
+            ));
+        }
+        if tables.iter().any(|t| t.name == sheet_name) {
+            return Err(AppError::SheetNameAlreadyExists(sheet_name.to_string()));
+        }
+
+        let escaped_name = Self::escape_xml_attr(sheet_name);
+        let new_table = format!("<table:table table:name=\"{escaped_name}\"/>");
+
+        let insert_at = if position.eq_ignore_ascii_case("start") {
+            tables[0].start
+        } else {
+            tables[tables.len() - 1].end
+        };
+
+        let mut out = String::with_capacity(original_content.len() + new_table.len() + 8);
+        out.push_str(&original_content[..insert_at]);
+        out.push_str(&new_table);
+        out.push_str(&original_content[insert_at..]);
+        Ok(out)
+    }
+
     pub fn rename_first_sheet_name_raw(
         original_content: &str,
         new_sheet_name: &str,
@@ -188,9 +219,17 @@ impl ContentXml {
 
         let mut out = String::with_capacity(tag.len() + new_value.len());
         out.push_str(&tag[..value_start]);
-        out.push_str(new_value);
+        out.push_str(&Self::escape_xml_attr(new_value));
         out.push_str(&tag[value_end..]);
         Ok(out)
+    }
+
+    fn escape_xml_attr(value: &str) -> String {
+        value
+            .replace('&', "&amp;")
+            .replace('"', "&quot;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
     }
 
     fn find_next_table_open(content: &str, from: usize) -> Option<usize> {

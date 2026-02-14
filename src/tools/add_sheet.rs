@@ -1,8 +1,8 @@
 use crate::common::errors::AppError;
 use crate::common::fs::FsUtil;
 use crate::common::json::JsonUtil;
+use crate::ods::content_xml::ContentXml;
 use crate::ods::ods_file::OdsFile;
-use crate::ods::sheet_model::Sheet;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -24,27 +24,23 @@ fn default_position() -> String {
 }
 
 pub fn handle(params: Value) -> Result<Value, AppError> {
-    // Adds a new empty sheet without copying data from existing sheets.
+    // Adds a new sheet by patching content.xml directly to preserve Calc XML structures.
     let input: AddSheetInput = JsonUtil::from_value(params)?;
     let path = FsUtil::resolve_ods_path(&input.path)?;
     if !path.exists() {
         return Err(AppError::FileNotFound(path.display().to_string()));
     }
 
-    let mut workbook = OdsFile::read_workbook(&path)?;
-    if workbook.sheets.iter().any(|s| s.name == input.sheet_name) {
-        return Err(AppError::SheetNameAlreadyExists(input.sheet_name));
-    }
+    let original_content = OdsFile::read_content_xml(&path)?;
+    let updated_content = ContentXml::add_sheet_preserving_styles_raw(
+        &original_content,
+        &input.sheet_name,
+        &input.position,
+    )?;
+    OdsFile::write_content_xml(&path, &updated_content)?;
+    let sheets = ContentXml::sheet_names_from_content_raw(&updated_content)?;
 
-    let new_sheet = Sheet::new(input.sheet_name);
-    if input.position.eq_ignore_ascii_case("start") {
-        workbook.sheets.insert(0, new_sheet);
-    } else {
-        workbook.sheets.push(new_sheet);
-    }
-
-    OdsFile::write_workbook(&path, &workbook)?;
     JsonUtil::to_value(AddSheetOutput {
-        sheets: workbook.sheets.into_iter().map(|s| s.name).collect(),
+        sheets,
     })
 }

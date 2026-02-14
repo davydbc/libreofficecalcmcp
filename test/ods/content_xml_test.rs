@@ -517,6 +517,39 @@ fn set_cell_value_preserving_styles_raw_errors_when_sheet_index_does_not_exist()
 }
 
 #[test]
+fn add_sheet_preserving_styles_raw_inserts_at_end_without_dropping_blocks() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:automatic-styles><style:style xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" style:name="ce1" style:family="table-cell"/></office:automatic-styles>
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::add_sheet_preserving_styles_raw(original, "S2", "end").expect("add");
+    let names = ContentXml::sheet_names_from_content_raw(&updated).expect("names");
+    assert_eq!(names, vec!["S1", "S2"]);
+    assert!(updated.contains("<office:automatic-styles>"));
+    assert!(updated.contains("style:name=\"ce1\""));
+}
+
+#[test]
+fn add_sheet_preserving_styles_raw_inserts_at_start_and_escapes_name() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Base"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::add_sheet_preserving_styles_raw(original, "A&B", "start")
+        .expect("add start");
+    let names = ContentXml::sheet_names_from_content_raw(&updated).expect("names");
+    assert_eq!(names, vec!["A&amp;B", "Base"]);
+    assert!(updated.contains("<table:table table:name=\"A&amp;B\"/>"));
+}
+
+#[test]
 fn set_cell_value_preserving_styles_raw_handles_repeated_row_with_covered_cells_before_target() {
     let original = r#"<?xml version="1.0" encoding="UTF-8"?>
 <office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">

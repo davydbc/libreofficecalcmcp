@@ -12,11 +12,12 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 pub struct OdsFile;
 
 impl OdsFile {
+    // Creates a minimal but valid ODS zip package from templates.
     pub fn create(path: &Path, initial_sheet_name: String) -> Result<(), AppError> {
         let file = File::create(path)?;
         let mut zip = ZipWriter::new(file);
 
-        // En ODS el mimetype debe ir primero y sin compresión para que LibreOffice lo reconozca.
+        // ODS requires "mimetype" to be first and stored (not compressed).
         let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
         zip.start_file("mimetype", stored)?;
         zip.write_all(OdsTemplates::mimetype().as_bytes())?;
@@ -53,12 +54,14 @@ impl OdsFile {
             return Err(AppError::InvalidOdsFormat("invalid mimetype".to_string()));
         }
 
+        // content.xml stores the workbook tables, rows and cell values.
         let mut content = String::new();
         zip.by_name("content.xml")?.read_to_string(&mut content)?;
         ContentXml::parse(&content)
     }
 
     pub fn write_workbook(path: &Path, workbook: &Workbook) -> Result<(), AppError> {
+        // Rebuild the zip to preserve non-content entries and replace only content.xml.
         let src = File::open(path)?;
         let mut zip = ZipArchive::new(src)?;
         let mut entries: HashMap<String, Vec<u8>> = HashMap::new();

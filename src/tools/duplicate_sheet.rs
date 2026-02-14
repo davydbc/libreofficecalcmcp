@@ -25,6 +25,7 @@ struct DuplicateSheetOutput {
 }
 
 pub fn handle(params: Value) -> Result<Value, AppError> {
+    // Duplicates an existing sheet and inserts the copy right after source.
     let input: DuplicateSheetInput = JsonUtil::from_value(params)?;
     let path = FsUtil::resolve_ods_path(&input.path)?;
     if !path.exists() {

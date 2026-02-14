@@ -7,6 +7,7 @@ pub struct CellAddress {
 }
 
 impl CellAddress {
+    // Parses A1 notation (for example: B3, AA10) into zero-based indexes.
     pub fn parse(input: &str) -> Result<Self, AppError> {
         if input.trim().is_empty() {
             return Err(AppError::InvalidCellAddress("address is empty".to_string()));
@@ -49,6 +50,7 @@ impl CellAddress {
     }
 
     pub fn to_a1(self) -> String {
+        // Converts zero-based column index back to base-26 spreadsheet letters.
         let mut col = self.col + 1;
         let mut letters = String::new();
         while col > 0 {

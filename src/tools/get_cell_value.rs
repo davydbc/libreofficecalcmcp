@@ -29,6 +29,7 @@ struct GetCellValueOutput {
 }
 
 pub fn handle(params: Value) -> Result<Value, AppError> {
+    // Fast path when caller needs only one cell and not the full matrix.
     let input: GetCellValueInput = JsonUtil::from_value(params)?;
     let path = FsUtil::resolve_ods_path(&input.path)?;
     if !path.exists() {
@@ -55,6 +56,7 @@ fn resolve_sheet(
     workbook: &crate::ods::sheet_model::Workbook,
     reference: SheetRef,
 ) -> Result<(usize, String), AppError> {
+    // Sheet selectors accept either {name} or {index}.
     match reference {
         SheetRef::Name { name } => workbook
             .sheet_index_by_name(&name)

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+// Minimal JSON-RPC request used by this server.
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcRequest {
     pub jsonrpc: Option<String>,

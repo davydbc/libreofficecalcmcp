@@ -1,6 +1,7 @@
 pub struct Manifest;
 
 impl Manifest {
+    // Minimal manifest listing the XML entries used by this project.
     pub fn minimal_manifest_xml() -> &'static str {
         r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\">

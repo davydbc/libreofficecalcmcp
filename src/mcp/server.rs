@@ -17,7 +17,7 @@ impl McpServer {
                 continue;
             }
 
-            // Protocolo simple: una petición JSON-RPC por línea en stdin/stdout.
+            // Protocol is line-oriented: one JSON-RPC request per stdin line.
             let request: Result<JsonRpcRequest, _> = serde_json::from_str(&line);
             let response = match request {
                 Ok(req) => match Dispatcher::dispatch(&req.method, req.params) {

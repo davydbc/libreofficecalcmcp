@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+// Central error type used across MCP, XML and filesystem layers.
 #[derive(Debug, Error)]
 pub enum AppError {
     #[error("invalid path: {0}")]
@@ -27,6 +28,7 @@ pub enum AppError {
 }
 
 impl AppError {
+    // Stable numeric codes simplify machine handling on MCP clients.
     pub fn code(&self) -> i32 {
         match self {
             AppError::InvalidPath(_) => 1001,

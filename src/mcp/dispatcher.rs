@@ -6,6 +6,7 @@ pub struct Dispatcher;
 
 impl Dispatcher {
     pub fn dispatch(method: &str, params: Option<Value>) -> Result<Value, AppError> {
+        // Support both direct calls ("create_ods") and MCP "tools/call" envelope.
         let (tool_name, args) = if method == "tools/call" {
             let payload =
                 params.ok_or_else(|| AppError::InvalidInput("missing params".to_string()))?;

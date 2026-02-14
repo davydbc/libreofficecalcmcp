@@ -16,6 +16,7 @@ struct GetSheetsOutput {
 }
 
 pub fn handle(params: Value) -> Result<Value, AppError> {
+    // Returns sheet names preserving the same order as content.xml.
     let input: GetSheetsInput = JsonUtil::from_value(params)?;
     let path = FsUtil::resolve_ods_path(&input.path)?;
     if !path.exists() {

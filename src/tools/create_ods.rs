@@ -25,6 +25,7 @@ fn default_sheet_name() -> String {
 }
 
 pub fn handle(params: Value) -> Result<Value, AppError> {
+    // 1) parse input, 2) validate path, 3) create ODS skeleton.
     let input: CreateOdsInput = JsonUtil::from_value(params)?;
     let path = FsUtil::resolve_ods_path(&input.path)?;
 

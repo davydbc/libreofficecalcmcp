@@ -6,6 +6,7 @@ use crate::ods::sheet_model::Workbook;
 pub struct OdsTemplates;
 
 impl OdsTemplates {
+    // MIME string checked by spreadsheet apps before parsing XML.
     pub fn mimetype() -> &'static str {
         "application/vnd.oasis.opendocument.spreadsheet"
     }
@@ -36,6 +37,7 @@ impl OdsTemplates {
     }
 
     pub fn content_xml(initial_sheet_name: String) -> Result<String, AppError> {
+        // Start every new document with one empty sheet.
         ContentXml::render(&Workbook::new(initial_sheet_name))
     }
 }

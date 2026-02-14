@@ -112,6 +112,7 @@ impl ContentXml {
     }
 
     pub fn render(workbook: &Workbook) -> Result<String, AppError> {
+        // Writes the workbook model back to ODS content.xml syntax.
         let mut writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', 2);
         writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
 
@@ -192,6 +193,7 @@ impl ContentXml {
     }
 
     fn attr_repeat(e: &BytesStart<'_>, key: &[u8], decoder: quick_xml::encoding::Decoder) -> usize {
+        // ODS can compress repeated rows/columns using repeat attributes.
         for attr in e.attributes().flatten() {
             if attr.key.as_ref() == key {
                 if let Ok(v) = attr.decode_and_unescape_value(decoder) {
@@ -205,6 +207,7 @@ impl ContentXml {
     }
 
     fn value_from_attrs(e: &BytesStart<'_>, decoder: quick_xml::encoding::Decoder) -> CellValue {
+        // Value type is represented by attributes; text is optional for numbers/booleans.
         let mut value_type: Option<String> = None;
         let mut value: Option<String> = None;
         let mut boolean_value: Option<String> = None;

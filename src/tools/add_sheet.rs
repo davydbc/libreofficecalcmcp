@@ -24,6 +24,7 @@ fn default_position() -> String {
 }
 
 pub fn handle(params: Value) -> Result<Value, AppError> {
+    // Adds a new empty sheet without copying data from existing sheets.
     let input: AddSheetInput = JsonUtil::from_value(params)?;
     let path = FsUtil::resolve_ods_path(&input.path)?;
     if !path.exists() {

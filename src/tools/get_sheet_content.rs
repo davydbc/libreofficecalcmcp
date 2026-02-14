@@ -46,6 +46,7 @@ fn default_max_cols() -> usize {
 }
 
 pub fn handle(params: Value) -> Result<Value, AppError> {
+    // Builds a bounded 2D matrix representation optimized for LLM consumption.
     let input: GetSheetContentInput = JsonUtil::from_value(params)?;
     if input.mode != "matrix" {
         return Err(AppError::InvalidInput(
@@ -102,6 +103,7 @@ fn value_as_string(value: &CellValue) -> String {
 }
 
 fn trim_trailing(mut matrix: Vec<Vec<String>>) -> (usize, usize, Vec<Vec<String>>) {
+    // Removes trailing empty rows/columns to reduce output noise and token usage.
     while matrix
         .last()
         .map(|r| r.iter().all(|v| v.is_empty()))
@@ -128,6 +130,7 @@ fn resolve_sheet(
     workbook: &crate::ods::sheet_model::Workbook,
     reference: SheetRef,
 ) -> Result<(usize, String), AppError> {
+    // Sheet selectors accept either {name} or {index}.
     match reference {
         SheetRef::Name { name } => workbook
             .sheet_index_by_name(&name)

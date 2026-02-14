@@ -42,9 +42,11 @@ impl Sheet {
     }
 
     pub fn ensure_cell_mut(&mut self, row: usize, col: usize) -> &mut Cell {
+        // Grow rows first.
         while self.rows.len() <= row {
             self.rows.push(Vec::new());
         }
+        // Then grow every row to keep a rectangular matrix shape.
         for row_cells in &mut self.rows {
             while row_cells.len() <= col {
                 row_cells.push(Cell::empty());

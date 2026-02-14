@@ -614,3 +614,76 @@ fn set_cell_value_preserving_styles_raw_rejects_target_inside_start_covered_cell
     .expect_err("covered");
     assert!(err.to_string().contains("covered cell"));
 }
+
+#[test]
+fn set_cell_value_preserving_styles_raw_splits_repeated_empty_row_with_before_and_after() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row table:number-rows-repeated="5"/>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        2,
+        1,
+        &CellValue::String("B3".to_string()),
+    )
+    .expect("set");
+
+    assert!(updated.contains("table:number-rows-repeated=\"2\""));
+    assert!(updated.contains("<text:p>B3</text:p>"));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_splits_repeated_empty_row_when_target_is_last() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row table:number-rows-repeated="3"/>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        2,
+        0,
+        &CellValue::String("A3".to_string()),
+    )
+    .expect("set");
+
+    assert!(updated.contains("table:number-rows-repeated=\"2\""));
+    assert!(updated.contains("<text:p>A3</text:p>"));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_writes_inside_second_sheet_when_first_is_self_closing() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/>
+    <table:table table:name="S2">
+      <table:table-row><table:table-cell/></table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        1,
+        0,
+        0,
+        &CellValue::String("S2_A1".to_string()),
+    )
+    .expect("set");
+
+    assert!(updated.contains("S2_A1"));
+    assert_eq!(updated.matches("S2_A1").count(), 1);
+}

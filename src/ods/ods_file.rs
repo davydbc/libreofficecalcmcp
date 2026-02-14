@@ -33,15 +33,25 @@ impl OdsFile {
         writer.start_file("mimetype", stored)?;
         writer.write_all(mimetype.as_bytes())?;
 
+        let mut dir_names = Vec::new();
         let mut names = Vec::new();
         for i in 0..template.len() {
             let name = template.by_index(i)?.name().to_string();
-            if name == "mimetype" || name.ends_with('/') {
+            if name == "mimetype" {
+                continue;
+            }
+            if name.ends_with('/') {
+                dir_names.push(name);
                 continue;
             }
             names.push(name);
         }
+        dir_names.sort();
         names.sort();
+
+        for dir in dir_names {
+            let _ = writer.add_directory(dir, deflated);
+        }
 
         for name in names {
             let mut entry = template.by_name(&name)?;

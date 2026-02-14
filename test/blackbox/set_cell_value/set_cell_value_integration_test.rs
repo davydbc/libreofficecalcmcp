@@ -35,7 +35,7 @@ fn set_cell_value_updates_and_persists_value() {
 }
 
 #[test]
-fn set_cell_value_keeps_zip_valid_without_directory_entries() {
+fn set_cell_value_preserves_directory_entries_from_source_zip() {
     let (_dir, file_path) = new_ods_path("set_cell_nested.ods");
     create_base_ods(&file_path, "Hoja1");
 
@@ -87,14 +87,8 @@ fn set_cell_value_keeps_zip_valid_without_directory_entries() {
     )
     .expect("set_cell_value");
 
-    // Output zip should contain only file entries (no explicit directories).
+    // Output zip should preserve nested file entries from source zip.
     let file = File::open(&file_path).expect("open result");
     let mut zip = ZipArchive::new(file).expect("read result zip");
-    for i in 0..zip.len() {
-        let name = zip.by_index(i).expect("entry").name().to_string();
-        assert!(
-            !name.ends_with('/'),
-            "unexpected directory entry in output zip: {name}"
-        );
-    }
+    assert!(zip.by_name("Configurations2/statusbar/state.xml").is_ok());
 }

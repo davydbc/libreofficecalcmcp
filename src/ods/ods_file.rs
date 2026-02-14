@@ -2,7 +2,6 @@ use crate::common::errors::AppError;
 use crate::ods::content_xml::ContentXml;
 use crate::ods::ods_templates::OdsTemplates;
 use crate::ods::sheet_model::Workbook;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
@@ -103,24 +102,23 @@ impl OdsFile {
     }
 
     pub fn write_content_xml(path: &Path, content_xml: &str) -> Result<(), AppError> {
-        // Rebuild the zip to preserve non-content entries and replace only content.xml.
+        // Rebuild the zip preserving original entry order and directories.
         let src = File::open(path)?;
         let mut zip = ZipArchive::new(src)?;
-        let mut entries: HashMap<String, Vec<u8>> = HashMap::new();
+        let mut entries: Vec<(String, bool, Vec<u8>)> = Vec::new();
 
         for i in 0..zip.len() {
             let mut file = zip.by_index(i)?;
             let name = file.name().to_string();
             if name.ends_with('/') {
+                entries.push((name, true, Vec::new()));
                 continue;
             }
             let mut bytes = Vec::new();
             file.read_to_end(&mut bytes)?;
-            entries.insert(name, bytes);
+            entries.push((name, false, bytes));
         }
         drop(zip);
-
-        entries.insert("content.xml".to_string(), content_xml.as_bytes().to_vec());
 
         let out = File::create(path)?;
         let mut writer = ZipWriter::new(out);
@@ -128,26 +126,26 @@ impl OdsFile {
         let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
         writer.start_file("mimetype", stored)?;
         let mimetype = entries
-            .get("mimetype")
-            .cloned()
+            .iter()
+            .find(|(name, is_dir, _)| name == "mimetype" && !*is_dir)
+            .map(|(_, _, data)| data.clone())
             .unwrap_or_else(|| OdsTemplates::mimetype().as_bytes().to_vec());
         writer.write_all(&mimetype)?;
 
         let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        let mut names: Vec<_> = entries
-            .keys()
-            .filter(|n| n.as_str() != "mimetype")
-            .cloned()
-            .collect();
-        names.sort();
-
-        for name in names {
-            if let Some(content) = entries.get(&name) {
-                // ZIP files do not require explicit directory entries.
-                // Writing only file entries avoids duplicate/ambiguous directories
-                // when re-saving ODS files that contain many nested paths.
-                writer.start_file(name, deflated)?;
-                writer.write_all(content)?;
+        for (name, is_dir, data) in entries {
+            if name == "mimetype" {
+                continue;
+            }
+            if is_dir {
+                let _ = writer.add_directory(name, deflated);
+                continue;
+            }
+            writer.start_file(name.clone(), deflated)?;
+            if name == "content.xml" {
+                writer.write_all(content_xml.as_bytes())?;
+            } else {
+                writer.write_all(&data)?;
             }
         }
 

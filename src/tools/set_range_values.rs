@@ -2,6 +2,7 @@ use crate::common::errors::AppError;
 use crate::common::fs::FsUtil;
 use crate::common::json::JsonUtil;
 use crate::ods::cell_address::CellAddress;
+use crate::ods::content_xml::ContentXml;
 use crate::ods::ods_file::OdsFile;
 use crate::ods::sheet_model::CellValue;
 use serde::{Deserialize, Serialize};
@@ -30,15 +31,16 @@ struct SetRangeValuesOutput {
 }
 
 pub fn handle(params: Value) -> Result<Value, AppError> {
-    // Writes a matrix starting at start_cell, expanding by rows and columns.
+    // Writes a matrix by patching content.xml in-place to preserve Calc-compatible structure.
     let input: SetRangeValuesInput = JsonUtil::from_value(params)?;
     let path = FsUtil::resolve_ods_path(&input.path)?;
     if !path.exists() {
         return Err(AppError::FileNotFound(path.display().to_string()));
     }
 
-    let mut workbook = OdsFile::read_workbook(&path)?;
-    let (sheet_index, _) = resolve_sheet(&workbook, input.sheet)?;
+    let mut content_xml = OdsFile::read_content_xml(&path)?;
+    let sheet_names = ContentXml::sheet_names_from_content_raw(&content_xml)?;
+    let (sheet_index, _) = resolve_sheet(&sheet_names, input.sheet)?;
     let start = CellAddress::parse(&input.start_cell)?;
 
     let rows = input.data.len();
@@ -46,14 +48,25 @@ pub fn handle(params: Value) -> Result<Value, AppError> {
 
     for (r_off, row) in input.data.iter().enumerate() {
         for (c_off, value) in row.iter().enumerate() {
-            // Current implementation stores range data as string values.
-            workbook.sheets[sheet_index]
-                .ensure_cell_mut(start.row + r_off, start.col + c_off)
-                .value = CellValue::String(value.clone());
+            let source_row = start.row + r_off;
+            let source_col = start.col + c_off;
+            let (target_row, target_col) = ContentXml::resolve_merged_anchor_raw(
+                &content_xml,
+                sheet_index,
+                source_row,
+                source_col,
+            )?;
+            content_xml = ContentXml::set_cell_value_preserving_styles_raw(
+                &content_xml,
+                sheet_index,
+                target_row,
+                target_col,
+                &CellValue::String(value.clone()),
+            )?;
         }
     }
 
-    OdsFile::write_workbook(&path, &workbook)?;
+    OdsFile::write_content_xml(&path, &content_xml)?;
     JsonUtil::to_value(SetRangeValuesOutput {
         updated: true,
         rows_written: rows,
@@ -62,20 +75,21 @@ pub fn handle(params: Value) -> Result<Value, AppError> {
 }
 
 fn resolve_sheet(
-    workbook: &crate::ods::sheet_model::Workbook,
+    sheet_names: &[String],
     reference: SheetRef,
 ) -> Result<(usize, String), AppError> {
     // Sheet selectors accept either {name} or {index}.
     match reference {
-        SheetRef::Name { name } => workbook
-            .sheet_index_by_name(&name)
-            .map(|idx| (idx, workbook.sheets[idx].name.clone()))
+        SheetRef::Name { name } => sheet_names
+            .iter()
+            .position(|n| n == &name)
+            .map(|idx| (idx, sheet_names[idx].clone()))
             .ok_or(AppError::SheetNotFound(name)),
         SheetRef::Index { index } => {
-            if index >= workbook.sheets.len() {
+            if index >= sheet_names.len() {
                 Err(AppError::SheetNotFound(index.to_string()))
             } else {
-                Ok((index, workbook.sheets[index].name.clone()))
+                Ok((index, sheet_names[index].clone()))
             }
         }
     }

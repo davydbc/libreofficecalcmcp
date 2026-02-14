@@ -65,12 +65,9 @@ impl OdsFile {
     }
 
     pub fn write_workbook(path: &Path, workbook: &Workbook) -> Result<(), AppError> {
-        let original_content = Self::read_content_xml(path)?;
-        let new_content = if original_content.is_empty() {
-            ContentXml::render(workbook)?
-        } else {
-            ContentXml::render_preserving_original(workbook, &original_content)?
-        };
+        // Use deterministic renderer to avoid namespace-prefix rewrites
+        // that can happen with generic XML tree serializers.
+        let new_content = ContentXml::render(workbook)?;
         Self::write_content_xml(path, &new_content)
     }
 

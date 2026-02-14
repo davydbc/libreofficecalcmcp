@@ -43,7 +43,7 @@ pub fn handle(params: Value) -> Result<Value, AppError> {
         _ => None,
     };
 
-    let updated_content = ContentXml::duplicate_sheet_preserving_styles(
+    let updated_content = ContentXml::duplicate_sheet_preserving_styles_raw(
         &original_content,
         source_name,
         source_index,
@@ -51,6 +51,6 @@ pub fn handle(params: Value) -> Result<Value, AppError> {
     )?;
     OdsFile::write_content_xml(&path, &updated_content)?;
 
-    let sheets = ContentXml::sheet_names_from_content(&updated_content)?;
+    let sheets = ContentXml::sheet_names_from_content_raw(&updated_content)?;
     JsonUtil::to_value(DuplicateSheetOutput { sheets })
 }

@@ -104,15 +104,9 @@ impl OdsFile {
 
         for name in names {
             if let Some(content) = entries.get(&name) {
-                if let Some(parent) = Path::new(&name).parent() {
-                    if !parent.as_os_str().is_empty() {
-                        let mut dir = parent.to_string_lossy().replace('\\', "/");
-                        if !dir.ends_with('/') {
-                            dir.push('/');
-                        }
-                        let _ = writer.add_directory(dir, deflated);
-                    }
-                }
+                // ZIP files do not require explicit directory entries.
+                // Writing only file entries avoids duplicate/ambiguous directories
+                // when re-saving ODS files that contain many nested paths.
                 writer.start_file(name, deflated)?;
                 writer.write_all(content)?;
             }

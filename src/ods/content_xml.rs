@@ -56,6 +56,24 @@ impl ContentXml {
         Ok(out)
     }
 
+    pub fn rename_first_sheet_name_raw(
+        original_content: &str,
+        new_sheet_name: &str,
+    ) -> Result<String, AppError> {
+        let tables = Self::find_table_blocks(original_content)?;
+        let first = tables
+            .first()
+            .ok_or_else(|| AppError::InvalidOdsFormat("no table:table blocks found".to_string()))?;
+        let table_xml = &original_content[first.start..first.end];
+        let renamed = Self::rename_first_table_name(table_xml, new_sheet_name)?;
+
+        let mut out = String::with_capacity(original_content.len() + 32);
+        out.push_str(&original_content[..first.start]);
+        out.push_str(&renamed);
+        out.push_str(&original_content[first.end..]);
+        Ok(out)
+    }
+
     pub fn parse(content: &str) -> Result<Workbook, AppError> {
         // Parseamos solo el subconjunto necesario de ODS (tablas, filas, celdas y texto).
         let mut reader = Reader::from_str(content);

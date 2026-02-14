@@ -4,7 +4,7 @@ use crate::ods::ods_templates::OdsTemplates;
 use crate::ods::sheet_model::Workbook;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Cursor, Read, Write};
 use std::path::Path;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
@@ -14,33 +14,54 @@ pub struct OdsFile;
 impl OdsFile {
     // Creates a minimal but valid ODS zip package from templates.
     pub fn create(path: &Path, initial_sheet_name: String) -> Result<(), AppError> {
-        let file = File::create(path)?;
-        let mut zip = ZipWriter::new(file);
+        // Build new files from a LibreOffice-generated template so structure
+        // matches what Calc expects by default.
+        let template_bytes = OdsTemplates::empty_calc_template();
+        let reader = Cursor::new(template_bytes);
+        let mut template = ZipArchive::new(reader)?;
 
-        // ODS requires "mimetype" to be first and stored (not compressed).
+        let out_file = File::create(path)?;
+        let mut writer = ZipWriter::new(out_file);
         let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
-        zip.start_file("mimetype", stored)?;
-        zip.write_all(OdsTemplates::mimetype().as_bytes())?;
-
         let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
-        zip.start_file("content.xml", deflated)?;
-        zip.write_all(OdsTemplates::content_xml(initial_sheet_name)?.as_bytes())?;
+        // Keep ODS rule: first entry must be mimetype stored with no compression.
+        let mut mimetype = String::new();
+        template
+            .by_name("mimetype")?
+            .read_to_string(&mut mimetype)?;
+        writer.start_file("mimetype", stored)?;
+        writer.write_all(mimetype.as_bytes())?;
 
-        zip.start_file("styles.xml", deflated)?;
-        zip.write_all(OdsTemplates::styles_xml().as_bytes())?;
+        let mut names = Vec::new();
+        for i in 0..template.len() {
+            let name = template.by_index(i)?.name().to_string();
+            if name == "mimetype" || name.ends_with('/') {
+                continue;
+            }
+            names.push(name);
+        }
+        names.sort();
 
-        zip.start_file("meta.xml", deflated)?;
-        zip.write_all(OdsTemplates::meta_xml().as_bytes())?;
+        for name in names {
+            let mut entry = template.by_name(&name)?;
+            let mut bytes = Vec::new();
+            entry.read_to_end(&mut bytes)?;
 
-        zip.start_file("settings.xml", deflated)?;
-        zip.write_all(OdsTemplates::settings_xml().as_bytes())?;
+            if name == "content.xml" {
+                let content = String::from_utf8(bytes)
+                    .map_err(|e| AppError::InvalidOdsFormat(e.to_string()))?;
+                let renamed =
+                    ContentXml::rename_first_sheet_name_raw(&content, &initial_sheet_name)?;
+                writer.start_file(name, deflated)?;
+                writer.write_all(renamed.as_bytes())?;
+            } else {
+                writer.start_file(name, deflated)?;
+                writer.write_all(&bytes)?;
+            }
+        }
 
-        zip.add_directory("META-INF/", deflated)?;
-        zip.start_file("META-INF/manifest.xml", deflated)?;
-        zip.write_all(OdsTemplates::manifest_xml().as_bytes())?;
-
-        zip.finish()?;
+        writer.finish()?;
         Ok(())
     }
 

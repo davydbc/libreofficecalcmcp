@@ -55,7 +55,7 @@ fn set_cell_value_preserving_styles_raw_does_not_expand_row_cells_individually()
     )
     .expect("update C1");
 
-    assert!(updated.contains("<table:table-cell table:style-name=\"Default\"/>"));
+    assert!(!updated.contains("table:style-name=\"Default\""));
     assert!(updated.contains("office:value-type=\"string\""));
 }
 

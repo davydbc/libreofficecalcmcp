@@ -245,3 +245,41 @@ fn set_range_values_uses_merged_anchor_when_start_cell_is_covered() {
     .expect("anchor");
     assert_eq!(anchor["value"], json!({"type":"string","data":"merged"}));
 }
+
+#[test]
+fn set_range_values_on_added_sheet_does_not_emit_unknown_default_style() {
+    let (_dir, file_path) = new_ods_path("range_added_sheet_no_default_style.ods");
+    create_base_ods(&file_path, "Hoja1");
+
+    dispatch(
+        "add_sheet",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet_name": "Estadísticas",
+            "position": "end"
+        }),
+    )
+    .expect("add");
+
+    dispatch(
+        "set_range_values",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet": "{\"name\":\"Estadísticas\"}",
+            "start_cell": "A1",
+            "data": [["Estadísticas"], ["", ""], ["Media", "42.75"]]
+        }),
+    )
+    .expect("set range");
+
+    let file = File::open(&file_path).expect("open");
+    let mut zip = ZipArchive::new(file).expect("zip");
+    let mut xml = String::new();
+    zip.by_name("content.xml")
+        .expect("content")
+        .read_to_string(&mut xml)
+        .expect("read");
+
+    assert!(!xml.contains("table:style-name=\"Default\""));
+    assert!(xml.contains("table:name=\"Estadísticas\""));
+}

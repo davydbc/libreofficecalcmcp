@@ -378,9 +378,6 @@ impl ContentXml {
                 }
                 cell.push_attribute(attr);
             }
-        } else {
-            // Synthetic cells should not inherit unrelated column defaults.
-            cell.push_attribute(("table:style-name", "Default"));
         }
 
         match value {
@@ -468,7 +465,6 @@ impl ContentXml {
 
     fn default_gap_cell(repeat: usize) -> BytesStart<'static> {
         let mut gap = BytesStart::new("table:table-cell");
-        gap.push_attribute(("table:style-name", "Default"));
         if repeat > 1 {
             let cols_text = repeat.to_string();
             gap.push_attribute(("table:number-columns-repeated", cols_text.as_str()));

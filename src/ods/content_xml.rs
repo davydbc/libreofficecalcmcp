@@ -8,6 +8,239 @@ use xmltree::{Element, EmitterConfig, XMLNode};
 pub struct ContentXml;
 
 impl ContentXml {
+    pub fn set_cell_value_preserving_styles_raw(
+        original_content: &str,
+        sheet_index: usize,
+        target_row: usize,
+        target_col: usize,
+        value: &CellValue,
+    ) -> Result<String, AppError> {
+        let mut reader = Reader::from_str(original_content);
+        reader.config_mut().trim_text(false);
+        let mut writer = Writer::new(Cursor::new(Vec::new()));
+
+        let mut current_sheet: usize = 0;
+        let mut in_target_sheet = false;
+        let mut current_row: usize = 0;
+        let mut in_target_row = false;
+        let mut current_col: usize = 0;
+        let mut current_row_repeat: usize = 1;
+        let mut value_written = false;
+
+        let mut skip_cell_depth = 0usize;
+
+        loop {
+            let event = reader
+                .read_event()
+                .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+            match event {
+                Event::Start(e) if Self::is_local_name_bytes(e.name().as_ref(), b"table") => {
+                    in_target_sheet = current_sheet == sheet_index;
+                    current_sheet += 1;
+                    writer
+                        .write_event(Event::Start(e.to_owned()))
+                        .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                }
+                Event::End(e) if Self::is_local_name_bytes(e.name().as_ref(), b"table") => {
+                    if in_target_sheet && !value_written {
+                        for row_idx in current_row..=target_row {
+                            writer
+                                .write_event(Event::Start(BytesStart::new("table:table-row")))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                            if row_idx == target_row {
+                                for _ in 0..target_col {
+                                    writer
+                                        .write_event(Event::Empty(BytesStart::new(
+                                            "table:table-cell",
+                                        )))
+                                        .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                                }
+                                Self::write_value_cell(&mut writer, value, None)?;
+                            } else {
+                                writer
+                                    .write_event(Event::Empty(BytesStart::new("table:table-cell")))
+                                    .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                            }
+                            writer
+                                .write_event(Event::End(BytesEnd::new("table:table-row")))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        }
+                        value_written = true;
+                    }
+                    writer
+                        .write_event(Event::End(e.to_owned()))
+                        .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                    in_target_sheet = false;
+                    current_row = 0;
+                }
+                Event::Empty(e) if Self::is_local_name_bytes(e.name().as_ref(), b"table") => {
+                    in_target_sheet = current_sheet == sheet_index;
+                    current_sheet += 1;
+                    if in_target_sheet {
+                        writer
+                            .write_event(Event::Start(e.to_owned()))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        for row_idx in 0..=target_row {
+                            writer
+                                .write_event(Event::Start(BytesStart::new("table:table-row")))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                            if row_idx == target_row {
+                                for _ in 0..target_col {
+                                    writer
+                                        .write_event(Event::Empty(BytesStart::new(
+                                            "table:table-cell",
+                                        )))
+                                        .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                                }
+                                Self::write_value_cell(&mut writer, value, None)?;
+                            } else {
+                                writer
+                                    .write_event(Event::Empty(BytesStart::new("table:table-cell")))
+                                    .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                            }
+                            writer
+                                .write_event(Event::End(BytesEnd::new("table:table-row")))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        }
+                        writer
+                            .write_event(Event::End(BytesEnd::new("table:table")))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        value_written = true;
+                    } else {
+                        writer
+                            .write_event(Event::Empty(e.to_owned()))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                    }
+                    in_target_sheet = false;
+                }
+                Event::Start(e) if Self::is_local_name_bytes(e.name().as_ref(), b"table-row") => {
+                    let row_repeat =
+                        Self::attr_repeat(&e, b"number-rows-repeated", reader.decoder());
+                    current_row_repeat = row_repeat;
+                    in_target_row = in_target_sheet
+                        && !value_written
+                        && target_row >= current_row
+                        && target_row < (current_row + row_repeat);
+                    current_col = 0;
+                    writer
+                        .write_event(Event::Start(e.to_owned()))
+                        .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                }
+                Event::End(e) if Self::is_local_name_bytes(e.name().as_ref(), b"table-row") => {
+                    if in_target_row && !value_written && target_col >= current_col {
+                        for _ in current_col..target_col {
+                            writer
+                                .write_event(Event::Empty(BytesStart::new("table:table-cell")))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        }
+                        Self::write_value_cell(&mut writer, value, None)?;
+                        value_written = true;
+                    }
+                    writer
+                        .write_event(Event::End(e.to_owned()))
+                        .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                    current_row += current_row_repeat;
+                    current_row_repeat = 1;
+                    in_target_row = false;
+                }
+                Event::Empty(e) if Self::is_local_name_bytes(e.name().as_ref(), b"table-cell") => {
+                    if in_target_row && !value_written {
+                        let repeat =
+                            Self::attr_repeat(&e, b"number-columns-repeated", reader.decoder());
+                        let range_end = current_col + repeat;
+                        if target_col >= current_col && target_col < range_end {
+                            let before = target_col.saturating_sub(current_col);
+                            let after = range_end.saturating_sub(target_col + 1);
+                            if before > 0 {
+                                for _ in 0..before {
+                                    let before_tag = Self::clone_cell_without_repeat(&e);
+                                    writer
+                                        .write_event(Event::Empty(before_tag))
+                                        .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                                }
+                            }
+                            Self::write_value_cell(&mut writer, value, Some(&e))?;
+                            if after > 0 {
+                                for _ in 0..after {
+                                    let after_tag = Self::clone_cell_without_repeat(&e);
+                                    writer
+                                        .write_event(Event::Empty(after_tag))
+                                        .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                                }
+                            }
+                            value_written = true;
+                        } else {
+                            writer
+                                .write_event(Event::Empty(e.to_owned()))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        }
+                        current_col = range_end;
+                    } else {
+                        writer
+                            .write_event(Event::Empty(e.to_owned()))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                    }
+                }
+                Event::Start(e) if Self::is_local_name_bytes(e.name().as_ref(), b"table-cell") => {
+                    if skip_cell_depth > 0 {
+                        skip_cell_depth += 1;
+                        continue;
+                    }
+
+                    if in_target_row && !value_written {
+                        let repeat =
+                            Self::attr_repeat(&e, b"number-columns-repeated", reader.decoder());
+                        let range_end = current_col + repeat;
+                        if target_col >= current_col && target_col < range_end {
+                            if repeat > 1 {
+                                return Err(AppError::InvalidOdsFormat(
+                                    "cannot safely edit repeated non-empty cell".to_string(),
+                                ));
+                            }
+                            Self::write_value_cell(&mut writer, value, Some(&e))?;
+                            value_written = true;
+                            skip_cell_depth = 1;
+                        } else {
+                            writer
+                                .write_event(Event::Start(e.to_owned()))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        }
+                        current_col = range_end;
+                    } else {
+                        writer
+                            .write_event(Event::Start(e.to_owned()))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                    }
+                }
+                Event::End(e) if Self::is_local_name_bytes(e.name().as_ref(), b"table-cell") => {
+                    if skip_cell_depth > 0 {
+                        skip_cell_depth -= 1;
+                        continue;
+                    }
+                    writer
+                        .write_event(Event::End(e.to_owned()))
+                        .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                }
+                Event::Eof => break,
+                other => {
+                    if skip_cell_depth == 0 {
+                        writer
+                            .write_event(other.into_owned())
+                            .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                    }
+                }
+            }
+        }
+
+        if !value_written {
+            return Err(AppError::InvalidInput(
+                "target cell could not be written in source xml".to_string(),
+            ));
+        }
+
+        let bytes = writer.into_inner().into_inner();
+        String::from_utf8(bytes).map_err(|e| AppError::XmlParseError(e.to_string()))
+    }
     pub fn sheet_names_from_content_raw(original_content: &str) -> Result<Vec<String>, AppError> {
         let tables = Self::find_table_blocks(original_content)?;
         Ok(tables.into_iter().map(|t| t.name).collect())
@@ -645,6 +878,105 @@ impl ContentXml {
         out.push_str(new_value);
         out.push_str(&tag[value_end..]);
         Ok(out)
+    }
+
+    fn write_value_cell(
+        writer: &mut Writer<Cursor<Vec<u8>>>,
+        value: &CellValue,
+        existing: Option<&BytesStart<'_>>,
+    ) -> Result<(), AppError> {
+        let mut cell = BytesStart::new("table:table-cell");
+        if let Some(existing) = existing {
+            for attr in existing.attributes().flatten() {
+                let key = attr.key.as_ref();
+                if Self::is_local_name_bytes(key, b"value-type")
+                    || Self::is_local_name_bytes(key, b"value")
+                    || Self::is_local_name_bytes(key, b"boolean-value")
+                    || Self::is_local_name_bytes(key, b"number-columns-repeated")
+                {
+                    continue;
+                }
+                cell.push_attribute(attr);
+            }
+        }
+
+        match value {
+            CellValue::String(v) => {
+                cell.push_attribute(("office:value-type", "string"));
+                writer
+                    .write_event(Event::Start(cell))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::Start(BytesStart::new("text:p")))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::Text(BytesText::new(v)))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::End(BytesEnd::new("text:p")))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::End(BytesEnd::new("table:table-cell")))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+            }
+            CellValue::Number(v) => {
+                let s = v.to_string();
+                cell.push_attribute(("office:value-type", "float"));
+                cell.push_attribute(("office:value", s.as_str()));
+                writer
+                    .write_event(Event::Start(cell))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::Start(BytesStart::new("text:p")))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::Text(BytesText::new(&s)))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::End(BytesEnd::new("text:p")))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::End(BytesEnd::new("table:table-cell")))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+            }
+            CellValue::Boolean(v) => {
+                let s = if *v { "true" } else { "false" };
+                cell.push_attribute(("office:value-type", "boolean"));
+                cell.push_attribute(("office:boolean-value", s));
+                writer
+                    .write_event(Event::Start(cell))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::Start(BytesStart::new("text:p")))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::Text(BytesText::new(s)))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::End(BytesEnd::new("text:p")))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+                writer
+                    .write_event(Event::End(BytesEnd::new("table:table-cell")))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+            }
+            CellValue::Empty => {
+                writer
+                    .write_event(Event::Empty(cell))
+                    .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn clone_cell_without_repeat(src: &BytesStart<'_>) -> BytesStart<'static> {
+        let mut out = BytesStart::new("table:table-cell");
+        for attr in src.attributes().flatten() {
+            if Self::is_local_name_bytes(attr.key.as_ref(), b"number-columns-repeated") {
+                continue;
+            }
+            out.push_attribute(attr);
+        }
+        out
     }
 
     fn find_next_table_open(content: &str, from: usize) -> Option<usize> {

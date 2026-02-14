@@ -81,3 +81,25 @@ fn add_sheet_returns_not_found_for_missing_file() {
     .expect_err("missing file");
     assert!(err.to_string().contains("file not found"));
 }
+
+#[test]
+fn add_sheet_uses_end_as_default_position_when_omitted() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("add_sheet_default_position.ods");
+
+    create_ods::handle(json!({
+        "path": path.to_string_lossy(),
+        "overwrite": true,
+        "initial_sheet_name": "Base"
+    }))
+    .expect("create");
+
+    add_sheet::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet_name": "Nueva"
+    }))
+    .expect("add");
+
+    let out = get_sheets::handle(json!({ "path": path.to_string_lossy() })).expect("sheets");
+    assert_eq!(out["sheets"], json!(["Base", "Nueva"]));
+}

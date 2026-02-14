@@ -26,3 +26,9 @@ fn get_sheets_returns_not_found_for_missing_file() {
     let err = get_sheets::handle(json!({ "path": path.to_string_lossy() })).expect_err("missing");
     assert!(err.to_string().contains("file not found"));
 }
+
+#[test]
+fn get_sheets_rejects_non_ods_path_extension() {
+    let err = get_sheets::handle(json!({ "path": "demo.xlsx" })).expect_err("invalid extension");
+    assert!(err.to_string().contains("expected .ods extension"));
+}

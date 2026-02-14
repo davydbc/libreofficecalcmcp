@@ -753,3 +753,32 @@ fn rename_first_sheet_name_raw_escapes_xml_sensitive_chars() {
     let updated = ContentXml::rename_first_sheet_name_raw(original, "A\"<>&B").expect("rename");
     assert!(updated.contains("table:name=\"A&quot;&lt;&gt;&amp;B\""));
 }
+
+#[test]
+fn set_cell_value_preserving_styles_raw_repeated_row_capture_preserves_non_target_row_content() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row table:number-rows-repeated="3">
+        <table:table-cell office:value-type="string">
+          <text:p>base</text:p>
+          <text:span>detail</text:span>
+        </table:table-cell>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        1,
+        1,
+        &CellValue::String("B2".to_string()),
+    )
+    .expect("set");
+
+    assert!(updated.contains("<text:span>detail</text:span>"));
+    assert!(updated.contains("<text:p>B2</text:p>"));
+}

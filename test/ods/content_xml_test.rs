@@ -515,3 +515,53 @@ fn set_cell_value_preserving_styles_raw_errors_when_sheet_index_does_not_exist()
     .expect_err("missing sheet");
     assert!(err.to_string().contains("target cell could not be written"));
 }
+
+#[test]
+fn set_cell_value_preserving_styles_raw_handles_repeated_row_with_covered_cells_before_target() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row table:number-rows-repeated="2">
+        <table:covered-table-cell table:number-columns-repeated="2"/>
+        <table:table-cell/>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        0,
+        2,
+        &CellValue::String("C1".to_string()),
+    )
+    .expect("set");
+    assert!(updated.contains("<text:p>C1</text:p>"));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_rejects_target_inside_start_covered_cell_in_repeated_row() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row table:number-rows-repeated="2">
+        <table:covered-table-cell></table:covered-table-cell>
+        <table:table-cell/>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        1,
+        0,
+        &CellValue::String("X".to_string()),
+    )
+    .expect_err("covered");
+    assert!(err.to_string().contains("covered cell"));
+}

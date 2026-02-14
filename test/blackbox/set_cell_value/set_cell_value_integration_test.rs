@@ -602,3 +602,53 @@ fn set_cell_value_can_create_missing_rows_before_target() {
     assert_eq!(a5["value"], json!({"type":"string","data":"A5"}));
     assert_eq!(a4["value"], json!({"type":"empty"}));
 }
+
+#[test]
+fn set_cell_value_handles_repeated_row_with_covered_cells_before_target() {
+    let (_dir, file_path) = new_ods_path("set_cell_repeated_covered_before_target.ods");
+    create_base_ods(&file_path, "Hoja1");
+
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row table:number-rows-repeated="2">
+        <table:covered-table-cell table:number-columns-repeated="2"/>
+        <table:table-cell/>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+    overwrite_content_xml(&file_path, content);
+
+    dispatch(
+        "set_cell_value",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet": { "index": 0 },
+            "cell": "C1",
+            "value": { "type": "string", "data": "C1" }
+        }),
+    )
+    .expect("set");
+
+    let content = dispatch(
+        "get_sheet_content",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet": { "index": 0 },
+            "mode": "matrix",
+            "max_rows": 8,
+            "max_cols": 8,
+            "include_empty_trailing": true
+        }),
+    )
+    .expect("content");
+    let matrix = content["data"].as_array().expect("rows");
+    let found = matrix
+        .iter()
+        .filter_map(|row| row.as_array())
+        .flat_map(|row| row.iter())
+        .any(|v| v.as_str() == Some("C1"));
+    assert!(found, "expected written value in matrix");
+}

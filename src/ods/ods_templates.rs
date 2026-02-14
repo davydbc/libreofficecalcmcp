@@ -12,22 +12,22 @@ impl OdsTemplates {
     }
 
     pub fn meta_xml() -> &'static str {
-        r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<office:document-meta xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" office:version=\"1.2\">
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-meta xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" office:version="1.2">
   <office:meta />
 </office:document-meta>"#
     }
 
     pub fn styles_xml() -> &'static str {
-        r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<office:document-styles xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" office:version=\"1.2\">
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" office:version="1.2">
   <office:styles />
 </office:document-styles>"#
     }
 
     pub fn settings_xml() -> &'static str {
-        r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<office:document-settings xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" office:version=\"1.2\">
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-settings xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" office:version="1.2">
   <office:settings />
 </office:document-settings>"#
     }

@@ -782,3 +782,123 @@ fn set_cell_value_preserving_styles_raw_repeated_row_capture_preserves_non_targe
     assert!(updated.contains("<text:span>detail</text:span>"));
     assert!(updated.contains("<text:p>B2</text:p>"));
 }
+
+#[test]
+fn content_xml_parse_supports_unprefixed_tags_and_self_closing_table() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<document-content>
+  <body><spreadsheet>
+    <table name="S1"/>
+  </spreadsheet></body>
+</document-content>"#;
+
+    let workbook = ContentXml::parse(xml).expect("parse");
+    assert_eq!(workbook.sheets.len(), 1);
+    assert_eq!(workbook.sheets[0].name, "S1");
+}
+
+#[test]
+fn content_xml_parse_concatenates_multiple_text_nodes_in_single_cell() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1">
+      <table:table-row>
+        <table:table-cell office:value-type="string">
+          <text:p>foo</text:p><text:p>bar</text:p>
+        </table:table-cell>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let workbook = ContentXml::parse(xml).expect("parse");
+    let value = workbook.sheets[0].get_cell(0, 0).expect("a1").value.clone();
+    assert_eq!(value, CellValue::String("foobar".to_string()));
+}
+
+#[test]
+fn content_xml_parse_returns_error_for_malformed_xml() {
+    let xml = r#"<office:document-content><office:body></office:document-content>"#;
+    let err = ContentXml::parse(xml).expect_err("must fail");
+    assert!(matches!(err, AppError::XmlParseError(_)));
+}
+
+#[test]
+fn content_xml_render_writes_empty_cells_as_empty_tags() {
+    let mut workbook = Workbook::new("S1".to_string());
+    workbook.sheets[0].ensure_cell_mut(0, 0).value = CellValue::Empty;
+
+    let rendered = ContentXml::render(&workbook).expect("render");
+    assert!(rendered.contains("<table:table-cell/>"));
+}
+
+#[test]
+fn resolve_merged_anchor_raw_returns_target_on_repeated_empty_row() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1">
+      <table:table-row table:number-rows-repeated="3"/>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let anchor = ContentXml::resolve_merged_anchor_raw(xml, 0, 2, 4).expect("resolve");
+    assert_eq!(anchor, (2, 4));
+}
+
+#[test]
+fn duplicate_sheet_preserving_styles_raw_requires_source_selector() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err = ContentXml::duplicate_sheet_preserving_styles_raw(xml, None, None, "S2")
+        .expect_err("missing selector");
+    assert!(err.to_string().contains("missing source sheet selector"));
+}
+
+#[test]
+fn duplicate_sheet_preserving_styles_raw_rejects_content_without_tables() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0">
+  <office:body><office:spreadsheet/></office:body>
+</office:document-content>"#;
+
+    let err = ContentXml::duplicate_sheet_preserving_styles_raw(xml, Some("S1"), None, "S2")
+        .expect_err("no tables");
+    assert!(err.to_string().contains("no table:table blocks found"));
+}
+
+#[test]
+fn duplicate_sheet_preserving_styles_raw_supports_plain_name_attribute() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table name="S1"><table:table-row/></table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated =
+        ContentXml::duplicate_sheet_preserving_styles_raw(xml, Some("S1"), None, "S1_Copy")
+            .expect("duplicate");
+    assert!(updated.contains("name=\"S1_Copy\""));
+}
+
+#[test]
+fn sheet_names_from_content_raw_rejects_unterminated_start_tag() {
+    let xml = "<table:table table:name=\"S1\"";
+    let err = ContentXml::sheet_names_from_content_raw(xml).expect_err("must fail");
+    assert!(err.to_string().contains("unterminated start tag"));
+}
+
+#[test]
+fn sheet_names_from_content_raw_rejects_unterminated_table_block() {
+    let xml = "<table:table table:name=\"S1\">";
+    let err = ContentXml::sheet_names_from_content_raw(xml).expect_err("must fail");
+    assert!(err.to_string().contains("unterminated table block"));
+}

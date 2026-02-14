@@ -82,3 +82,35 @@ fn get_cell_value_reads_number_and_boolean_types() {
     assert_eq!(number["value"], json!({"type":"number","data":7.25}));
     assert_eq!(boolean["value"], json!({"type":"boolean","data":false}));
 }
+
+#[test]
+fn get_cell_value_returns_not_found_for_missing_file() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("missing_get_cell.ods");
+
+    let err = get_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "index": 0 },
+        "cell": "A1"
+    }))
+    .expect_err("missing file");
+
+    assert!(err.to_string().contains("file not found"));
+}
+
+#[test]
+fn get_cell_value_returns_error_for_invalid_sheet_index() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("get_cell_bad_sheet.ods");
+
+    create_ods::handle(json!({ "path": path.to_string_lossy(), "overwrite": true }))
+        .expect("create");
+    let err = get_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "index": 9 },
+        "cell": "A1"
+    }))
+    .expect_err("bad sheet");
+
+    assert!(err.to_string().contains("sheet not found"));
+}

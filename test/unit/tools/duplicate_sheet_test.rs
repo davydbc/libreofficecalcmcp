@@ -68,3 +68,18 @@ fn duplicate_sheet_supports_source_by_index() {
     let out = get_sheets::handle(json!({ "path": path.to_string_lossy() })).expect("get sheets");
     assert_eq!(out["sheets"], json!(["S1", "S1_copy"]));
 }
+
+#[test]
+fn duplicate_sheet_returns_file_not_found_for_missing_path() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("missing_duplicate.ods");
+
+    let err = duplicate_sheet::handle(json!({
+        "path": path.to_string_lossy(),
+        "source_sheet": { "index": 0 },
+        "new_sheet_name": "Copy"
+    }))
+    .expect_err("missing file");
+
+    assert!(err.to_string().contains("file not found"));
+}

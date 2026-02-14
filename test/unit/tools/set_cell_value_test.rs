@@ -1,4 +1,5 @@
 use mcp_ods::tools::{create_ods, get_cell_value, set_cell_value};
+use mcp_ods::ods::ods_file::OdsFile;
 use serde_json::json;
 use tempfile::tempdir;
 
@@ -151,4 +152,39 @@ fn set_cell_value_returns_error_for_invalid_cell_address() {
     }))
     .expect_err("address error");
     assert!(err.to_string().contains("invalid cell address"));
+}
+
+#[test]
+fn set_cell_value_returns_file_not_found_for_missing_file() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("missing_set_cell.ods");
+
+    let err = set_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "index": 0 },
+        "cell": "A1",
+        "value": { "type": "string", "data": "x" }
+    }))
+    .expect_err("missing file");
+    assert!(err.to_string().contains("file not found"));
+}
+
+#[test]
+fn set_cell_value_propagates_resolve_anchor_xml_errors() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("set_cell_bad_content.ods");
+
+    create_ods::handle(json!({ "path": path.to_string_lossy(), "overwrite": true }))
+        .expect("create");
+    OdsFile::write_content_xml(&path, "<broken").expect("write broken xml");
+
+    let err = set_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "index": 0 },
+        "cell": "A1",
+        "value": { "type": "string", "data": "x" }
+    }))
+    .expect_err("must fail");
+
+    assert!(!err.to_string().is_empty());
 }

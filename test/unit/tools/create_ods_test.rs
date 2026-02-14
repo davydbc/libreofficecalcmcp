@@ -52,3 +52,17 @@ fn create_ods_rejects_non_ods_extension() {
     .expect_err("must fail");
     assert!(err.to_string().contains("expected .ods extension"));
 }
+
+#[test]
+fn create_ods_creates_parent_directories_when_missing() {
+    let dir = tempdir().expect("tempdir");
+    let nested = dir.path().join("a").join("b").join("nested_create.ods");
+
+    create_ods::handle(json!({
+        "path": nested.to_string_lossy(),
+        "overwrite": true
+    }))
+    .expect("create nested");
+
+    assert!(nested.exists());
+}

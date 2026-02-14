@@ -1,6 +1,7 @@
 use crate::common::errors::AppError;
 use crate::common::fs::FsUtil;
 use crate::common::json::JsonUtil;
+use crate::ods::content_xml::ContentXml;
 use crate::ods::ods_file::OdsFile;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -32,33 +33,24 @@ pub fn handle(params: Value) -> Result<Value, AppError> {
         return Err(AppError::FileNotFound(path.display().to_string()));
     }
 
-    let mut workbook = OdsFile::read_workbook(&path)?;
-    if workbook
-        .sheets
-        .iter()
-        .any(|s| s.name == input.new_sheet_name)
-    {
-        return Err(AppError::SheetNameAlreadyExists(input.new_sheet_name));
-    }
-
-    let idx = match input.source_sheet {
-        SheetRef::Name { name } => workbook
-            .sheet_index_by_name(&name)
-            .ok_or(AppError::SheetNotFound(name))?,
-        SheetRef::Index { index } => {
-            if index >= workbook.sheets.len() {
-                return Err(AppError::SheetNotFound(index.to_string()));
-            }
-            index
-        }
+    let original_content = OdsFile::read_content_xml(&path)?;
+    let source_name = match &input.source_sheet {
+        SheetRef::Name { name } => Some(name.as_str()),
+        _ => None,
+    };
+    let source_index = match &input.source_sheet {
+        SheetRef::Index { index } => Some(*index),
+        _ => None,
     };
 
-    let mut copy = workbook.sheets[idx].clone();
-    copy.name = input.new_sheet_name;
-    workbook.sheets.insert(idx + 1, copy);
+    let updated_content = ContentXml::duplicate_sheet_preserving_styles(
+        &original_content,
+        source_name,
+        source_index,
+        &input.new_sheet_name,
+    )?;
+    OdsFile::write_content_xml(&path, &updated_content)?;
 
-    OdsFile::write_workbook(&path, &workbook)?;
-    JsonUtil::to_value(DuplicateSheetOutput {
-        sheets: workbook.sheets.into_iter().map(|s| s.name).collect(),
-    })
+    let sheets = ContentXml::sheet_names_from_content(&updated_content)?;
+    JsonUtil::to_value(DuplicateSheetOutput { sheets })
 }

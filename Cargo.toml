@@ -15,6 +15,7 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 
 [dev-dependencies]
 tempfile = "3"
+xmltree = "0.11"
 
 [[test]]
 name = "unit"

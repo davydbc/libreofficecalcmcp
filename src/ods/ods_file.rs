@@ -45,6 +45,11 @@ impl OdsFile {
     }
 
     pub fn read_workbook(path: &Path) -> Result<Workbook, AppError> {
+        let content = Self::read_content_xml(path)?;
+        ContentXml::parse(&content)
+    }
+
+    pub fn read_content_xml(path: &Path) -> Result<String, AppError> {
         let file = File::open(path)?;
         let mut zip = ZipArchive::new(file)?;
 
@@ -54,13 +59,22 @@ impl OdsFile {
             return Err(AppError::InvalidOdsFormat("invalid mimetype".to_string()));
         }
 
-        // content.xml stores the workbook tables, rows and cell values.
         let mut content = String::new();
         zip.by_name("content.xml")?.read_to_string(&mut content)?;
-        ContentXml::parse(&content)
+        Ok(content)
     }
 
     pub fn write_workbook(path: &Path, workbook: &Workbook) -> Result<(), AppError> {
+        let original_content = Self::read_content_xml(path)?;
+        let new_content = if original_content.is_empty() {
+            ContentXml::render(workbook)?
+        } else {
+            ContentXml::render_preserving_original(workbook, &original_content)?
+        };
+        Self::write_content_xml(path, &new_content)
+    }
+
+    pub fn write_content_xml(path: &Path, content_xml: &str) -> Result<(), AppError> {
         // Rebuild the zip to preserve non-content entries and replace only content.xml.
         let src = File::open(path)?;
         let mut zip = ZipArchive::new(src)?;
@@ -78,17 +92,7 @@ impl OdsFile {
         }
         drop(zip);
 
-        let original_content = entries
-            .get("content.xml")
-            .and_then(|b| std::str::from_utf8(b).ok())
-            .unwrap_or_default()
-            .to_string();
-        let new_content = if original_content.is_empty() {
-            ContentXml::render(workbook)?
-        } else {
-            ContentXml::render_preserving_original(workbook, &original_content)?
-        };
-        entries.insert("content.xml".to_string(), new_content.into_bytes());
+        entries.insert("content.xml".to_string(), content_xml.as_bytes().to_vec());
 
         let out = File::create(path)?;
         let mut writer = ZipWriter::new(out);

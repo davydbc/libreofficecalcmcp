@@ -245,6 +245,102 @@ impl ContentXml {
         String::from_utf8(out).map_err(|e| AppError::XmlParseError(e.to_string()))
     }
 
+    pub fn sheet_names_from_content(original_content: &str) -> Result<Vec<String>, AppError> {
+        let root = Element::parse(original_content.as_bytes())
+            .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+        let body = Self::child_by_local_name(&root, "body")
+            .ok_or_else(|| AppError::InvalidOdsFormat("missing office:body".to_string()))?;
+        let spreadsheet = Self::child_by_local_name(body, "spreadsheet")
+            .ok_or_else(|| AppError::InvalidOdsFormat("missing office:spreadsheet".to_string()))?;
+
+        let mut names = Vec::new();
+        for child in &spreadsheet.children {
+            if let XMLNode::Element(table) = child {
+                if !Self::is_local_name(&table.name, "table") {
+                    continue;
+                }
+                if let Some(name) = Self::table_name(table) {
+                    names.push(name);
+                }
+            }
+        }
+        Ok(names)
+    }
+
+    pub fn duplicate_sheet_preserving_styles(
+        original_content: &str,
+        source_name: Option<&str>,
+        source_index: Option<usize>,
+        new_sheet_name: &str,
+    ) -> Result<String, AppError> {
+        let mut root = Element::parse(original_content.as_bytes())
+            .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+        let body = Self::child_mut_by_local_name(&mut root, "body")
+            .ok_or_else(|| AppError::InvalidOdsFormat("missing office:body".to_string()))?;
+        let spreadsheet = Self::child_mut_by_local_name(body, "spreadsheet")
+            .ok_or_else(|| AppError::InvalidOdsFormat("missing office:spreadsheet".to_string()))?;
+
+        let mut table_node_indices = Vec::new();
+        let mut table_names = Vec::new();
+        for (i, child) in spreadsheet.children.iter().enumerate() {
+            if let XMLNode::Element(table) = child {
+                if !Self::is_local_name(&table.name, "table") {
+                    continue;
+                }
+                table_node_indices.push(i);
+                table_names.push(Self::table_name(table).unwrap_or_else(|| "Sheet".to_string()));
+            }
+        }
+
+        if table_names.iter().any(|n| n == new_sheet_name) {
+            return Err(AppError::SheetNameAlreadyExists(new_sheet_name.to_string()));
+        }
+
+        let table_pos = if let Some(name) = source_name {
+            table_names
+                .iter()
+                .position(|n| n == name)
+                .ok_or_else(|| AppError::SheetNotFound(name.to_string()))?
+        } else if let Some(index) = source_index {
+            if index >= table_names.len() {
+                return Err(AppError::SheetNotFound(index.to_string()));
+            }
+            index
+        } else {
+            return Err(AppError::InvalidInput(
+                "missing source sheet selector".to_string(),
+            ));
+        };
+
+        let source_node_index = table_node_indices[table_pos];
+        let cloned_table = match &spreadsheet.children[source_node_index] {
+            XMLNode::Element(table) => {
+                let mut copy = table.clone();
+                Self::set_table_name(&mut copy, new_sheet_name.to_string());
+                XMLNode::Element(copy)
+            }
+            _ => {
+                return Err(AppError::InvalidOdsFormat(
+                    "source table node is not an element".to_string(),
+                ))
+            }
+        };
+
+        spreadsheet
+            .children
+            .insert(source_node_index + 1, cloned_table);
+
+        let mut out = Vec::new();
+        root.write_with_config(
+            &mut out,
+            EmitterConfig::new()
+                .perform_indent(true)
+                .write_document_declaration(true),
+        )
+        .map_err(|e| AppError::XmlParseError(e.to_string()))?;
+        String::from_utf8(out).map_err(|e| AppError::XmlParseError(e.to_string()))
+    }
+
     fn render_table_elements(workbook: &Workbook) -> Vec<Element> {
         let mut result = Vec::new();
         for sheet in &workbook.sheets {
@@ -313,6 +409,36 @@ impl ContentXml {
             }
         }
         None
+    }
+
+    fn child_by_local_name<'a>(element: &'a Element, local_name: &str) -> Option<&'a Element> {
+        for child in &element.children {
+            if let XMLNode::Element(e) = child {
+                if Self::is_local_name(&e.name, local_name) {
+                    return Some(e);
+                }
+            }
+        }
+        None
+    }
+
+    fn table_name(table: &Element) -> Option<String> {
+        for (key, value) in &table.attributes {
+            if Self::is_local_name(key, "name") {
+                return Some(value.clone());
+            }
+        }
+        None
+    }
+
+    fn set_table_name(table: &mut Element, name: String) {
+        let key = table
+            .attributes
+            .keys()
+            .find(|k| Self::is_local_name(k, "name"))
+            .cloned()
+            .unwrap_or_else(|| "table:name".to_string());
+        table.attributes.insert(key, name);
     }
 
     fn is_local_name(full_name: &str, local_name: &str) -> bool {

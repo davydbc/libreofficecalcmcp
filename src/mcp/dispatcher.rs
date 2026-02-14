@@ -49,7 +49,9 @@ impl Dispatcher {
             "get_sheet_content" => tools::get_sheet_content::handle(args),
             "set_cell_value" => tools::set_cell_value::handle(args),
             "duplicate_sheet" => tools::duplicate_sheet::handle(args),
+            "delete_sheet" => tools::delete_sheet::handle(args),
             "add_sheet" => tools::add_sheet::handle(args),
+            "rename_sheet" => tools::rename_sheet::handle(args),
             "get_cell_value" => tools::get_cell_value::handle(args),
             "set_range_values" => tools::set_range_values::handle(args),
             _ => Err(AppError::InvalidInput(format!(
@@ -159,6 +161,31 @@ impl Dispatcher {
                             "position": { "type": "string", "enum": ["start", "end"] }
                         },
                         "required": ["path", "sheet_name"]
+                    }
+                },
+                {
+                    "name": "delete_sheet",
+                    "description": "Delete an existing sheet by name or index.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string" },
+                            "sheet": Self::sheet_selector_schema()
+                        },
+                        "required": ["path", "sheet"]
+                    }
+                },
+                {
+                    "name": "rename_sheet",
+                    "description": "Rename an existing sheet by name or index.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string" },
+                            "sheet": Self::sheet_selector_schema(),
+                            "new_sheet_name": { "type": "string" }
+                        },
+                        "required": ["path", "sheet", "new_sheet_name"]
                     }
                 },
                 {

@@ -902,3 +902,65 @@ fn sheet_names_from_content_raw_rejects_unterminated_table_block() {
     let err = ContentXml::sheet_names_from_content_raw(xml).expect_err("must fail");
     assert!(err.to_string().contains("unterminated table block"));
 }
+
+#[test]
+fn rename_sheet_preserving_styles_raw_renames_by_name_and_keeps_order() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/>
+    <table:table table:name="S2"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated =
+        ContentXml::rename_sheet_preserving_styles_raw(xml, Some("S2"), None, "Renamed")
+            .expect("rename");
+    let names = ContentXml::sheet_names_from_content_raw(&updated).expect("names");
+    assert_eq!(names, vec!["S1", "Renamed"]);
+}
+
+#[test]
+fn rename_sheet_preserving_styles_raw_rejects_duplicate_name() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/>
+    <table:table table:name="S2"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err = ContentXml::rename_sheet_preserving_styles_raw(xml, Some("S2"), None, "S1")
+        .expect_err("duplicate");
+    assert!(err.to_string().contains("already exists"));
+}
+
+#[test]
+fn delete_sheet_preserving_styles_raw_deletes_by_index() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/>
+    <table:table table:name="S2"/>
+    <table:table table:name="S3"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::delete_sheet_preserving_styles_raw(xml, None, Some(1)).expect("del");
+    let names = ContentXml::sheet_names_from_content_raw(&updated).expect("names");
+    assert_eq!(names, vec!["S1", "S3"]);
+}
+
+#[test]
+fn delete_sheet_preserving_styles_raw_rejects_deleting_last_sheet() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Only"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err = ContentXml::delete_sheet_preserving_styles_raw(xml, Some("Only"), None)
+        .expect_err("last sheet");
+    assert!(err.to_string().contains("last remaining sheet"));
+}

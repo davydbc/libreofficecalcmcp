@@ -20,4 +20,6 @@ fn dispatch_tools_list_returns_registered_tools() {
     let tools = result["tools"].as_array().expect("tools array");
     assert!(tools.iter().any(|t| t["name"] == "create_ods"));
     assert!(tools.iter().any(|t| t["name"] == "set_range_values"));
+    assert!(tools.iter().any(|t| t["name"] == "delete_sheet"));
+    assert!(tools.iter().any(|t| t["name"] == "rename_sheet"));
 }

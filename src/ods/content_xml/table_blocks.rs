@@ -22,21 +22,12 @@ impl ContentXml {
             return Err(AppError::SheetNameAlreadyExists(new_sheet_name.to_string()));
         }
 
-        let table_pos = if let Some(name) = source_name {
-            tables
-                .iter()
-                .position(|t| t.name == name)
-                .ok_or_else(|| AppError::SheetNotFound(name.to_string()))?
-        } else if let Some(index) = source_index {
-            if index >= tables.len() {
-                return Err(AppError::SheetNotFound(index.to_string()));
-            }
-            index
-        } else {
-            return Err(AppError::InvalidInput(
-                "missing source sheet selector".to_string(),
-            ));
-        };
+        let table_pos = Self::resolve_table_index(
+            &tables,
+            source_name,
+            source_index,
+            "missing source sheet selector",
+        )?;
 
         let source = &tables[table_pos];
         let source_xml = &original_content[source.start..source.end];
@@ -45,6 +36,70 @@ impl ContentXml {
         let mut out = String::with_capacity(original_content.len() + cloned.len() + 8);
         out.push_str(&original_content[..source.end]);
         out.push_str(&cloned);
+        out.push_str(&original_content[source.end..]);
+        Ok(out)
+    }
+
+    pub fn rename_sheet_preserving_styles_raw(
+        original_content: &str,
+        source_name: Option<&str>,
+        source_index: Option<usize>,
+        new_sheet_name: &str,
+    ) -> Result<String, AppError> {
+        let tables = Self::find_table_blocks(original_content)?;
+        if tables.is_empty() {
+            return Err(AppError::InvalidOdsFormat(
+                "no table:table blocks found".to_string(),
+            ));
+        }
+        if tables.iter().any(|t| t.name == new_sheet_name) {
+            return Err(AppError::SheetNameAlreadyExists(new_sheet_name.to_string()));
+        }
+
+        let table_pos = Self::resolve_table_index(
+            &tables,
+            source_name,
+            source_index,
+            "missing source sheet selector",
+        )?;
+        let source = &tables[table_pos];
+        let source_xml = &original_content[source.start..source.end];
+        let renamed = Self::rename_first_table_name(source_xml, new_sheet_name)?;
+
+        let mut out = String::with_capacity(original_content.len() + 32);
+        out.push_str(&original_content[..source.start]);
+        out.push_str(&renamed);
+        out.push_str(&original_content[source.end..]);
+        Ok(out)
+    }
+
+    pub fn delete_sheet_preserving_styles_raw(
+        original_content: &str,
+        source_name: Option<&str>,
+        source_index: Option<usize>,
+    ) -> Result<String, AppError> {
+        let tables = Self::find_table_blocks(original_content)?;
+        if tables.is_empty() {
+            return Err(AppError::InvalidOdsFormat(
+                "no table:table blocks found".to_string(),
+            ));
+        }
+        if tables.len() == 1 {
+            return Err(AppError::InvalidInput(
+                "cannot delete the last remaining sheet".to_string(),
+            ));
+        }
+
+        let table_pos = Self::resolve_table_index(
+            &tables,
+            source_name,
+            source_index,
+            "missing source sheet selector",
+        )?;
+        let source = &tables[table_pos];
+
+        let mut out = String::with_capacity(original_content.len());
+        out.push_str(&original_content[..source.start]);
         out.push_str(&original_content[source.end..]);
         Ok(out)
     }
@@ -118,6 +173,27 @@ impl ContentXml {
             pos = end;
         }
         Ok(result)
+    }
+
+    fn resolve_table_index(
+        tables: &[TableBlock],
+        source_name: Option<&str>,
+        source_index: Option<usize>,
+        missing_selector_message: &str,
+    ) -> Result<usize, AppError> {
+        if let Some(name) = source_name {
+            return tables
+                .iter()
+                .position(|t| t.name == name)
+                .ok_or_else(|| AppError::SheetNotFound(name.to_string()));
+        }
+        if let Some(index) = source_index {
+            if index >= tables.len() {
+                return Err(AppError::SheetNotFound(index.to_string()));
+            }
+            return Ok(index);
+        }
+        Err(AppError::InvalidInput(missing_selector_message.to_string()))
     }
 
     fn find_tag_end(content: &str, tag_start: usize) -> Result<usize, AppError> {

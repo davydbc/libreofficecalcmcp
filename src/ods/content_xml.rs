@@ -74,28 +74,29 @@ impl ContentXml {
                 }
                 Event::End(e) if Self::is_local_name_bytes(e.name().as_ref(), b"table") => {
                     if in_target_sheet && !value_written {
-                        for row_idx in current_row..=target_row {
+                        if target_row > current_row {
+                            let rows_before = target_row - current_row;
+                            let mut repeated_row = BytesStart::new("table:table-row");
+                            let rows_text = rows_before.to_string();
+                            repeated_row
+                                .push_attribute(("table:number-rows-repeated", rows_text.as_str()));
                             writer
-                                .write_event(Event::Start(BytesStart::new("table:table-row")))
-                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
-                            if row_idx == target_row {
-                                for _ in 0..target_col {
-                                    writer
-                                        .write_event(Event::Empty(BytesStart::new(
-                                            "table:table-cell",
-                                        )))
-                                        .map_err(|er| AppError::XmlParseError(er.to_string()))?;
-                                }
-                                Self::write_value_cell(&mut writer, value, None)?;
-                            } else {
-                                writer
-                                    .write_event(Event::Empty(BytesStart::new("table:table-cell")))
-                                    .map_err(|er| AppError::XmlParseError(er.to_string()))?;
-                            }
-                            writer
-                                .write_event(Event::End(BytesEnd::new("table:table-row")))
+                                .write_event(Event::Empty(repeated_row))
                                 .map_err(|er| AppError::XmlParseError(er.to_string()))?;
                         }
+                        writer
+                            .write_event(Event::Start(BytesStart::new("table:table-row")))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        if target_col > 0 {
+                            let gap = Self::default_gap_cell(target_col);
+                            writer
+                                .write_event(Event::Empty(gap))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        }
+                        Self::write_value_cell(&mut writer, value, None)?;
+                        writer
+                            .write_event(Event::End(BytesEnd::new("table:table-row")))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
                         value_written = true;
                     }
                     writer
@@ -111,28 +112,28 @@ impl ContentXml {
                         writer
                             .write_event(Event::Start(e.to_owned()))
                             .map_err(|er| AppError::XmlParseError(er.to_string()))?;
-                        for row_idx in 0..=target_row {
+                        if target_row > 0 {
+                            let mut repeated_row = BytesStart::new("table:table-row");
+                            let rows_text = target_row.to_string();
+                            repeated_row
+                                .push_attribute(("table:number-rows-repeated", rows_text.as_str()));
                             writer
-                                .write_event(Event::Start(BytesStart::new("table:table-row")))
-                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
-                            if row_idx == target_row {
-                                for _ in 0..target_col {
-                                    writer
-                                        .write_event(Event::Empty(BytesStart::new(
-                                            "table:table-cell",
-                                        )))
-                                        .map_err(|er| AppError::XmlParseError(er.to_string()))?;
-                                }
-                                Self::write_value_cell(&mut writer, value, None)?;
-                            } else {
-                                writer
-                                    .write_event(Event::Empty(BytesStart::new("table:table-cell")))
-                                    .map_err(|er| AppError::XmlParseError(er.to_string()))?;
-                            }
-                            writer
-                                .write_event(Event::End(BytesEnd::new("table:table-row")))
+                                .write_event(Event::Empty(repeated_row))
                                 .map_err(|er| AppError::XmlParseError(er.to_string()))?;
                         }
+                        writer
+                            .write_event(Event::Start(BytesStart::new("table:table-row")))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        if target_col > 0 {
+                            let gap = Self::default_gap_cell(target_col);
+                            writer
+                                .write_event(Event::Empty(gap))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        }
+                        Self::write_value_cell(&mut writer, value, None)?;
+                        writer
+                            .write_event(Event::End(BytesEnd::new("table:table-row")))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
                         writer
                             .write_event(Event::End(BytesEnd::new("table:table")))
                             .map_err(|er| AppError::XmlParseError(er.to_string()))?;
@@ -174,11 +175,61 @@ impl ContentXml {
                         .write_event(Event::Start(e.to_owned()))
                         .map_err(|e| AppError::XmlParseError(e.to_string()))?;
                 }
+                Event::Empty(e) if Self::is_local_name_bytes(e.name().as_ref(), b"table-row") => {
+                    let row_repeat =
+                        Self::attr_repeat(&e, b"number-rows-repeated", reader.decoder());
+                    let in_range = in_target_sheet
+                        && !value_written
+                        && target_row >= current_row
+                        && target_row < (current_row + row_repeat);
+                    if in_range {
+                        let before = target_row - current_row;
+                        let after = row_repeat - before - 1;
+                        if before > 0 {
+                            let before_row = Self::clone_row_with_repeat(&e, Some(before));
+                            writer
+                                .write_event(Event::Empty(before_row))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        }
+
+                        let target_row_tag = Self::clone_row_with_repeat(&e, None);
+                        writer
+                            .write_event(Event::Start(target_row_tag))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        if target_col > 0 {
+                            let gap = Self::default_gap_cell(target_col);
+                            writer
+                                .write_event(Event::Empty(gap))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        }
+                        Self::write_value_cell(&mut writer, value, None)?;
+                        writer
+                            .write_event(Event::End(BytesEnd::new("table:table-row")))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        value_written = true;
+
+                        if after > 0 {
+                            let after_row = Self::clone_row_with_repeat(&e, Some(after));
+                            writer
+                                .write_event(Event::Empty(after_row))
+                                .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                        }
+                    } else {
+                        writer
+                            .write_event(Event::Empty(e.to_owned()))
+                            .map_err(|er| AppError::XmlParseError(er.to_string()))?;
+                    }
+                    current_row += row_repeat;
+                    current_row_repeat = 1;
+                    in_target_row = false;
+                }
                 Event::End(e) if Self::is_local_name_bytes(e.name().as_ref(), b"table-row") => {
                     if in_target_row && !value_written && target_col >= current_col {
-                        for _ in current_col..target_col {
+                        let gap_count = target_col - current_col;
+                        if gap_count > 0 {
+                            let gap = Self::default_gap_cell(gap_count);
                             writer
-                                .write_event(Event::Empty(BytesStart::new("table:table-cell")))
+                                .write_event(Event::Empty(gap))
                                 .map_err(|er| AppError::XmlParseError(er.to_string()))?;
                         }
                         Self::write_value_cell(&mut writer, value, None)?;
@@ -200,21 +251,17 @@ impl ContentXml {
                             let before = target_col.saturating_sub(current_col);
                             let after = range_end.saturating_sub(target_col + 1);
                             if before > 0 {
-                                for _ in 0..before {
-                                    let before_tag = Self::clone_cell_without_repeat(&e);
-                                    writer
-                                        .write_event(Event::Empty(before_tag))
-                                        .map_err(|er| AppError::XmlParseError(er.to_string()))?;
-                                }
+                                let before_tag = Self::clone_cell_with_repeat(&e, before);
+                                writer
+                                    .write_event(Event::Empty(before_tag))
+                                    .map_err(|er| AppError::XmlParseError(er.to_string()))?;
                             }
                             Self::write_value_cell(&mut writer, value, Some(&e))?;
                             if after > 0 {
-                                for _ in 0..after {
-                                    let after_tag = Self::clone_cell_without_repeat(&e);
-                                    writer
-                                        .write_event(Event::Empty(after_tag))
-                                        .map_err(|er| AppError::XmlParseError(er.to_string()))?;
-                                }
+                                let after_tag = Self::clone_cell_with_repeat(&e, after);
+                                writer
+                                    .write_event(Event::Empty(after_tag))
+                                    .map_err(|er| AppError::XmlParseError(er.to_string()))?;
                             }
                             value_written = true;
                         } else {
@@ -404,6 +451,16 @@ impl ContentXml {
                 {
                     row_repeat = Self::attr_repeat(&e, b"number-rows-repeated", reader.decoder());
                     current_row = Some(Vec::new());
+                }
+                Ok(Event::Empty(e))
+                    if Self::is_local_name_bytes(e.name().as_ref(), b"table-row") =>
+                {
+                    let repeat = Self::attr_repeat(&e, b"number-rows-repeated", reader.decoder());
+                    if let Some(sheet) = current_sheet.as_mut() {
+                        for _ in 0..repeat {
+                            sheet.rows.push(Vec::new());
+                        }
+                    }
                 }
                 Ok(Event::End(e)) if Self::is_local_name_bytes(e.name().as_ref(), b"table-row") => {
                     if let (Some(sheet), Some(row)) = (current_sheet.as_mut(), current_row.take()) {
@@ -946,6 +1003,9 @@ impl ContentXml {
                 }
                 cell.push_attribute(attr);
             }
+        } else {
+            // Synthetic cells should not inherit unrelated column defaults.
+            cell.push_attribute(("table:style-name", "Default"));
         }
 
         match value {
@@ -1016,7 +1076,7 @@ impl ContentXml {
         Ok(())
     }
 
-    fn clone_cell_without_repeat(src: &BytesStart<'_>) -> BytesStart<'static> {
+    fn clone_cell_with_repeat(src: &BytesStart<'_>, repeat: usize) -> BytesStart<'static> {
         let mut out = BytesStart::new("table:table-cell");
         for attr in src.attributes().flatten() {
             if Self::is_local_name_bytes(attr.key.as_ref(), b"number-columns-repeated") {
@@ -1024,7 +1084,21 @@ impl ContentXml {
             }
             out.push_attribute(attr);
         }
+        if repeat > 1 {
+            let n_text = repeat.to_string();
+            out.push_attribute(("table:number-columns-repeated", n_text.as_str()));
+        }
         out
+    }
+
+    fn default_gap_cell(repeat: usize) -> BytesStart<'static> {
+        let mut gap = BytesStart::new("table:table-cell");
+        gap.push_attribute(("table:style-name", "Default"));
+        if repeat > 1 {
+            let cols_text = repeat.to_string();
+            gap.push_attribute(("table:number-columns-repeated", cols_text.as_str()));
+        }
+        gap
     }
 
     fn clone_row_with_repeat(src: &BytesStart<'_>, repeat: Option<usize>) -> BytesStart<'static> {
@@ -1112,21 +1186,17 @@ impl ContentXml {
                                 let before = tc.saturating_sub(current_col);
                                 let after = range_end.saturating_sub(tc + 1);
                                 if before > 0 {
-                                    for _ in 0..before {
-                                        let before_tag = Self::clone_cell_without_repeat(e);
-                                        writer.write_event(Event::Empty(before_tag)).map_err(
-                                            |er| AppError::XmlParseError(er.to_string()),
-                                        )?;
-                                    }
+                                    let before_tag = Self::clone_cell_with_repeat(e, before);
+                                    writer
+                                        .write_event(Event::Empty(before_tag))
+                                        .map_err(|er| AppError::XmlParseError(er.to_string()))?;
                                 }
                                 Self::write_value_cell(writer, value, Some(e))?;
                                 if after > 0 {
-                                    for _ in 0..after {
-                                        let after_tag = Self::clone_cell_without_repeat(e);
-                                        writer.write_event(Event::Empty(after_tag)).map_err(
-                                            |er| AppError::XmlParseError(er.to_string()),
-                                        )?;
-                                    }
+                                    let after_tag = Self::clone_cell_with_repeat(e, after);
+                                    writer
+                                        .write_event(Event::Empty(after_tag))
+                                        .map_err(|er| AppError::XmlParseError(er.to_string()))?;
                                 }
                                 wrote = true;
                             } else {
@@ -1194,9 +1264,11 @@ impl ContentXml {
 
         if let Some(tc) = target_col {
             if !wrote && tc >= current_col {
-                for _ in current_col..tc {
+                let gap_count = tc - current_col;
+                if gap_count > 0 {
+                    let gap = Self::default_gap_cell(gap_count);
                     writer
-                        .write_event(Event::Empty(BytesStart::new("table:table-cell")))
+                        .write_event(Event::Empty(gap))
                         .map_err(|er| AppError::XmlParseError(er.to_string()))?;
                 }
                 Self::write_value_cell(writer, value, None)?;

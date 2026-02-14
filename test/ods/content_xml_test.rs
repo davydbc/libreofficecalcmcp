@@ -46,3 +46,67 @@ fn render_preserving_original_keeps_non_table_spreadsheet_nodes() {
     assert!(rendered.contains("calculation-settings"));
     assert!(rendered.contains("table:name=\"Hoja1\""));
 }
+
+#[test]
+fn set_cell_value_preserving_styles_raw_does_not_expand_row_cells_individually() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2">
+  <office:automatic-styles>
+    <style:style xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" style:name="ce1" style:family="table-cell"/>
+  </office:automatic-styles>
+  <office:body>
+    <office:spreadsheet>
+      <table:table table:name="Hoja1">
+        <table:table-column table:default-cell-style-name="ce1"/>
+        <table:table-row>
+          <table:table-cell/>
+        </table:table-row>
+      </table:table>
+    </office:spreadsheet>
+  </office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        0,
+        2,
+        &CellValue::String("VALOR_DADO".to_string()),
+    )
+    .expect("update C1");
+
+    assert!(updated.contains("<table:table-cell table:style-name=\"Default\"/>"));
+    assert!(updated.contains("office:value-type=\"string\""));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_does_not_materialize_many_rows() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2">
+  <office:automatic-styles>
+    <style:style xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" style:name="ce1" style:family="table-cell"/>
+  </office:automatic-styles>
+  <office:body>
+    <office:spreadsheet>
+      <table:table table:name="Hoja1">
+        <table:table-column table:default-cell-style-name="ce1"/>
+        <table:table-row>
+          <table:table-cell/>
+        </table:table-row>
+      </table:table>
+    </office:spreadsheet>
+  </office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        7,
+        7,
+        &CellValue::String("VALOR_DADO".to_string()),
+    )
+    .expect("update H8");
+
+    assert!(updated.contains("table:number-rows-repeated=\"6\""));
+    assert!(updated.contains("table:number-columns-repeated=\"7\""));
+}

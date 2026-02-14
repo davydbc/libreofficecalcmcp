@@ -524,3 +524,81 @@ fn set_cell_value_skips_covered_cells_and_writes_after_them() {
         .any(|v| v.as_str() == Some("after_cov"));
     assert!(found, "expected written value in matrix");
 }
+
+#[test]
+fn set_cell_value_writes_far_cell_when_row_exists_but_target_col_is_after_existing_data() {
+    let (_dir, file_path) = new_ods_path("set_cell_far_col.ods");
+    create_base_ods(&file_path, "Hoja1");
+
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row>
+        <table:table-cell office:value-type="string"><text:p>A</text:p></table:table-cell>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+    overwrite_content_xml(&file_path, content);
+
+    dispatch(
+        "set_cell_value",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet": { "index": 0 },
+            "cell": "D1",
+            "value": { "type": "string", "data": "D1" }
+        }),
+    )
+    .expect("set");
+
+    let d1 = dispatch(
+        "get_cell_value",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet": { "index": 0 },
+            "cell": "D1"
+        }),
+    )
+    .expect("get");
+    assert_eq!(d1["value"], json!({"type":"string","data":"D1"}));
+}
+
+#[test]
+fn set_cell_value_can_create_missing_rows_before_target() {
+    let (_dir, file_path) = new_ods_path("set_cell_missing_rows.ods");
+    create_base_ods(&file_path, "Hoja1");
+
+    dispatch(
+        "set_cell_value",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet": { "index": 0 },
+            "cell": "A5",
+            "value": { "type": "string", "data": "A5" }
+        }),
+    )
+    .expect("set");
+
+    let a5 = dispatch(
+        "get_cell_value",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet": { "index": 0 },
+            "cell": "A5"
+        }),
+    )
+    .expect("a5");
+    let a4 = dispatch(
+        "get_cell_value",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet": { "index": 0 },
+            "cell": "A4"
+        }),
+    )
+    .expect("a4");
+    assert_eq!(a5["value"], json!({"type":"string","data":"A5"}));
+    assert_eq!(a4["value"], json!({"type":"empty"}));
+}

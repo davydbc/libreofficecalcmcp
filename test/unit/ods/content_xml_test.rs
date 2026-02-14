@@ -308,14 +308,9 @@ fn set_cell_value_preserving_styles_raw_supports_number_boolean_and_empty() {
   </office:spreadsheet></office:body>
 </office:document-content>"#;
 
-    let number = ContentXml::set_cell_value_preserving_styles_raw(
-        base,
-        0,
-        0,
-        0,
-        &CellValue::Number(3.5),
-    )
-    .expect("number");
+    let number =
+        ContentXml::set_cell_value_preserving_styles_raw(base, 0, 0, 0, &CellValue::Number(3.5))
+            .expect("number");
     assert!(number.contains("office:value-type=\"float\""));
     assert!(number.contains("office:value=\"3.5\""));
 
@@ -330,14 +325,9 @@ fn set_cell_value_preserving_styles_raw_supports_number_boolean_and_empty() {
     assert!(boolean.contains("office:value-type=\"boolean\""));
     assert!(boolean.contains("office:boolean-value=\"false\""));
 
-    let empty = ContentXml::set_cell_value_preserving_styles_raw(
-        &boolean,
-        0,
-        0,
-        0,
-        &CellValue::Empty,
-    )
-    .expect("empty");
+    let empty =
+        ContentXml::set_cell_value_preserving_styles_raw(&boolean, 0, 0, 0, &CellValue::Empty)
+            .expect("empty");
     assert!(empty.contains("<table:table-cell"));
     assert!(!empty.contains("office:value-type=\"boolean\""));
 }
@@ -542,11 +532,37 @@ fn add_sheet_preserving_styles_raw_inserts_at_start_and_escapes_name() {
   </office:spreadsheet></office:body>
 </office:document-content>"#;
 
-    let updated = ContentXml::add_sheet_preserving_styles_raw(original, "A&B", "start")
-        .expect("add start");
+    let updated =
+        ContentXml::add_sheet_preserving_styles_raw(original, "A&B", "start").expect("add start");
     let names = ContentXml::sheet_names_from_content_raw(&updated).expect("names");
     assert_eq!(names, vec!["A&amp;B", "Base"]);
     assert!(updated.contains("<table:table table:name=\"A&amp;B\"/>"));
+}
+
+#[test]
+fn add_sheet_preserving_styles_raw_rejects_duplicate_name() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err =
+        ContentXml::add_sheet_preserving_styles_raw(original, "S1", "end").expect_err("duplicate");
+    assert!(matches!(err, AppError::SheetNameAlreadyExists(_)));
+}
+
+#[test]
+fn add_sheet_preserving_styles_raw_requires_at_least_one_table() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0">
+  <office:body><office:spreadsheet></office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err =
+        ContentXml::add_sheet_preserving_styles_raw(original, "S2", "end").expect_err("no table");
+    assert!(err.to_string().contains("no table:table blocks found"));
 }
 
 #[test]

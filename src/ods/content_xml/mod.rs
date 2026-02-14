@@ -3,9 +3,9 @@ use crate::ods::sheet_model::{Cell, CellValue, Sheet, Workbook};
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::{Reader, Writer};
 use std::io::Cursor;
-use xmltree::{Element, EmitterConfig, XMLNode};
 
 pub struct ContentXml;
+mod workbook_xml;
 
 impl ContentXml {
     pub fn resolve_merged_anchor_raw(
@@ -79,17 +79,16 @@ impl ContentXml {
                             Self::attr_repeat(&e, b"number-rows-spanned", reader.decoder());
                         let col_span =
                             Self::attr_repeat(&e, b"number-columns-spanned", reader.decoder());
-
-                        for rep in 0..col_repeat {
-                            let start_col = current_col + (rep * col_span);
-                            let end_col = start_col + col_span - 1;
-                            if target_row >= current_row
-                                && target_row < current_row + row_span
-                                && target_col >= start_col
-                                && target_col <= end_col
-                            {
-                                return Ok((current_row, start_col));
-                            }
+                        if let Some(anchor_col) = Self::find_spanned_anchor_col(
+                            current_row,
+                            current_col,
+                            row_span,
+                            col_span,
+                            col_repeat,
+                            target_row,
+                            target_col,
+                        ) {
+                            return Ok((current_row, anchor_col));
                         }
                         current_col += col_repeat * col_span;
                     }
@@ -102,17 +101,16 @@ impl ContentXml {
                             Self::attr_repeat(&e, b"number-rows-spanned", reader.decoder());
                         let col_span =
                             Self::attr_repeat(&e, b"number-columns-spanned", reader.decoder());
-
-                        for rep in 0..col_repeat {
-                            let start_col = current_col + (rep * col_span);
-                            let end_col = start_col + col_span - 1;
-                            if target_row >= current_row
-                                && target_row < current_row + row_span
-                                && target_col >= start_col
-                                && target_col <= end_col
-                            {
-                                return Ok((current_row, start_col));
-                            }
+                        if let Some(anchor_col) = Self::find_spanned_anchor_col(
+                            current_row,
+                            current_col,
+                            row_span,
+                            col_span,
+                            col_repeat,
+                            target_row,
+                            target_col,
+                        ) {
+                            return Ok((current_row, anchor_col));
                         }
                         current_col += col_repeat * col_span;
                     }
@@ -568,453 +566,6 @@ impl ContentXml {
         Ok(out)
     }
 
-    pub fn parse(content: &str) -> Result<Workbook, AppError> {
-        // Parseamos solo el subconjunto necesario de ODS (tablas, filas, celdas y texto).
-        let mut reader = Reader::from_str(content);
-        reader.config_mut().trim_text(false);
-        let mut sheets: Vec<Sheet> = Vec::new();
-
-        let mut current_sheet: Option<Sheet> = None;
-        let mut current_row: Option<Vec<Cell>> = None;
-        let mut current_cell_value = CellValue::Empty;
-        let mut row_repeat = 1usize;
-        let mut cell_repeat = 1usize;
-        let mut in_text_p = false;
-
-        loop {
-            match reader.read_event() {
-                Ok(Event::Start(e)) if Self::is_local_name_bytes(e.name().as_ref(), b"table") => {
-                    let mut name = "Sheet1".to_string();
-                    for attr in e.attributes().flatten() {
-                        if Self::is_local_name_bytes(attr.key.as_ref(), b"name") {
-                            name = attr
-                                .decode_and_unescape_value(reader.decoder())
-                                .map_err(|x| AppError::XmlParseError(x.to_string()))?
-                                .to_string();
-                        }
-                    }
-                    current_sheet = Some(Sheet::new(name));
-                }
-                Ok(Event::Empty(e)) if Self::is_local_name_bytes(e.name().as_ref(), b"table") => {
-                    let mut name = "Sheet1".to_string();
-                    for attr in e.attributes().flatten() {
-                        if Self::is_local_name_bytes(attr.key.as_ref(), b"name") {
-                            name = attr
-                                .decode_and_unescape_value(reader.decoder())
-                                .map_err(|x| AppError::XmlParseError(x.to_string()))?
-                                .to_string();
-                        }
-                    }
-                    sheets.push(Sheet::new(name));
-                }
-                Ok(Event::End(e)) if Self::is_local_name_bytes(e.name().as_ref(), b"table") => {
-                    if let Some(sheet) = current_sheet.take() {
-                        sheets.push(sheet);
-                    }
-                }
-                Ok(Event::Start(e))
-                    if Self::is_local_name_bytes(e.name().as_ref(), b"table-row") =>
-                {
-                    row_repeat = Self::attr_repeat(&e, b"number-rows-repeated", reader.decoder());
-                    current_row = Some(Vec::new());
-                }
-                Ok(Event::Empty(e))
-                    if Self::is_local_name_bytes(e.name().as_ref(), b"table-row") =>
-                {
-                    let repeat = Self::attr_repeat(&e, b"number-rows-repeated", reader.decoder());
-                    if let Some(sheet) = current_sheet.as_mut() {
-                        for _ in 0..repeat {
-                            sheet.rows.push(Vec::new());
-                        }
-                    }
-                }
-                Ok(Event::End(e)) if Self::is_local_name_bytes(e.name().as_ref(), b"table-row") => {
-                    if let (Some(sheet), Some(row)) = (current_sheet.as_mut(), current_row.take()) {
-                        for _ in 0..row_repeat {
-                            sheet.rows.push(row.clone());
-                        }
-                    }
-                    row_repeat = 1;
-                }
-                Ok(Event::Empty(e))
-                    if Self::is_local_name_bytes(e.name().as_ref(), b"table-cell") =>
-                {
-                    if let Some(row) = current_row.as_mut() {
-                        let value = Self::value_from_attrs(&e, reader.decoder());
-                        let repeat =
-                            Self::attr_repeat(&e, b"number-columns-repeated", reader.decoder());
-                        for _ in 0..repeat {
-                            row.push(Cell {
-                                value: value.clone(),
-                            });
-                        }
-                    }
-                }
-                Ok(Event::Start(e))
-                    if Self::is_local_name_bytes(e.name().as_ref(), b"table-cell") =>
-                {
-                    current_cell_value = Self::value_from_attrs(&e, reader.decoder());
-                    cell_repeat =
-                        Self::attr_repeat(&e, b"number-columns-repeated", reader.decoder());
-                }
-                Ok(Event::Start(e)) if Self::is_local_name_bytes(e.name().as_ref(), b"p") => {
-                    in_text_p = true;
-                }
-                Ok(Event::End(e)) if Self::is_local_name_bytes(e.name().as_ref(), b"p") => {
-                    in_text_p = false;
-                }
-                Ok(Event::Text(text)) if in_text_p => {
-                    let t = text
-                        .unescape()
-                        .map_err(|x| AppError::XmlParseError(x.to_string()))?
-                        .into_owned();
-                    match &mut current_cell_value {
-                        CellValue::String(existing) => existing.push_str(&t),
-                        CellValue::Empty => current_cell_value = CellValue::String(t),
-                        CellValue::Number(_) | CellValue::Boolean(_) => {}
-                    }
-                }
-                Ok(Event::End(e))
-                    if Self::is_local_name_bytes(e.name().as_ref(), b"table-cell") =>
-                {
-                    // Expandimos celdas repetidas para exponer siempre una matriz explícita.
-                    if let Some(row) = current_row.as_mut() {
-                        for _ in 0..cell_repeat {
-                            row.push(Cell {
-                                value: current_cell_value.clone(),
-                            });
-                        }
-                    }
-                    current_cell_value = CellValue::Empty;
-                    cell_repeat = 1;
-                    in_text_p = false;
-                }
-                Ok(Event::Eof) => break,
-                Ok(_) => {}
-                Err(e) => return Err(AppError::XmlParseError(e.to_string())),
-            }
-        }
-
-        Ok(Workbook { sheets })
-    }
-
-    pub fn render(workbook: &Workbook) -> Result<String, AppError> {
-        // Writes the workbook model back to ODS content.xml syntax.
-        let mut writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', 2);
-        writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
-
-        let mut root = BytesStart::new("office:document-content");
-        root.push_attribute((
-            "xmlns:office",
-            "urn:oasis:names:tc:opendocument:xmlns:office:1.0",
-        ));
-        root.push_attribute((
-            "xmlns:table",
-            "urn:oasis:names:tc:opendocument:xmlns:table:1.0",
-        ));
-        root.push_attribute((
-            "xmlns:text",
-            "urn:oasis:names:tc:opendocument:xmlns:text:1.0",
-        ));
-        root.push_attribute((
-            "xmlns:calcext",
-            "urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0",
-        ));
-        root.push_attribute(("office:version", "1.2"));
-        writer.write_event(Event::Start(root))?;
-
-        writer.write_event(Event::Start(BytesStart::new("office:body")))?;
-        writer.write_event(Event::Start(BytesStart::new("office:spreadsheet")))?;
-
-        for sheet in &workbook.sheets {
-            let mut table = BytesStart::new("table:table");
-            table.push_attribute(("table:name", sheet.name.as_str()));
-            writer.write_event(Event::Start(table))?;
-
-            for row in &sheet.rows {
-                writer.write_event(Event::Start(BytesStart::new("table:table-row")))?;
-                for cell in row {
-                    let mut cell_tag = BytesStart::new("table:table-cell");
-                    let maybe_text = match &cell.value {
-                        CellValue::String(v) => {
-                            cell_tag.push_attribute(("office:value-type", "string"));
-                            Some(v.clone())
-                        }
-                        CellValue::Number(v) => {
-                            let n = v.to_string();
-                            cell_tag.push_attribute(("office:value-type", "float"));
-                            cell_tag.push_attribute(("office:value", n.as_str()));
-                            Some(n)
-                        }
-                        CellValue::Boolean(v) => {
-                            let b = if *v { "true" } else { "false" };
-                            cell_tag.push_attribute(("office:value-type", "boolean"));
-                            cell_tag.push_attribute(("office:boolean-value", b));
-                            Some(b.to_string())
-                        }
-                        CellValue::Empty => None,
-                    };
-
-                    if let Some(text) = maybe_text {
-                        writer.write_event(Event::Start(cell_tag))?;
-                        writer.write_event(Event::Start(BytesStart::new("text:p")))?;
-                        writer.write_event(Event::Text(BytesText::new(&text)))?;
-                        writer.write_event(Event::End(BytesEnd::new("text:p")))?;
-                        writer.write_event(Event::End(BytesEnd::new("table:table-cell")))?;
-                    } else {
-                        writer.write_event(Event::Empty(cell_tag))?;
-                    }
-                }
-                writer.write_event(Event::End(BytesEnd::new("table:table-row")))?;
-            }
-
-            writer.write_event(Event::End(BytesEnd::new("table:table")))?;
-        }
-
-        writer.write_event(Event::End(BytesEnd::new("office:spreadsheet")))?;
-        writer.write_event(Event::End(BytesEnd::new("office:body")))?;
-        writer.write_event(Event::End(BytesEnd::new("office:document-content")))?;
-
-        let bytes = writer.into_inner().into_inner();
-        String::from_utf8(bytes).map_err(|e| AppError::XmlParseError(e.to_string()))
-    }
-
-    pub fn render_preserving_original(
-        workbook: &Workbook,
-        original_content: &str,
-    ) -> Result<String, AppError> {
-        let mut root = match Element::parse(original_content.as_bytes()) {
-            Ok(r) => r,
-            Err(_) => return Self::render(workbook),
-        };
-
-        let Some(body) = Self::child_mut_by_local_name(&mut root, "body") else {
-            return Self::render(workbook);
-        };
-        let Some(spreadsheet) = Self::child_mut_by_local_name(body, "spreadsheet") else {
-            return Self::render(workbook);
-        };
-
-        // Keep non-table children (for example calculation settings, named expressions, etc.).
-        spreadsheet
-            .children
-            .retain(|n| !matches!(n, XMLNode::Element(e) if Self::is_local_name(&e.name, "table")));
-
-        for table in Self::render_table_elements(workbook) {
-            spreadsheet.children.push(XMLNode::Element(table));
-        }
-
-        let mut out = Vec::new();
-        root.write_with_config(
-            &mut out,
-            EmitterConfig::new()
-                .perform_indent(true)
-                .write_document_declaration(true),
-        )
-        .map_err(|e| AppError::XmlParseError(e.to_string()))?;
-        String::from_utf8(out).map_err(|e| AppError::XmlParseError(e.to_string()))
-    }
-
-    pub fn sheet_names_from_content(original_content: &str) -> Result<Vec<String>, AppError> {
-        let root = Element::parse(original_content.as_bytes())
-            .map_err(|e| AppError::XmlParseError(e.to_string()))?;
-        let body = Self::child_by_local_name(&root, "body")
-            .ok_or_else(|| AppError::InvalidOdsFormat("missing office:body".to_string()))?;
-        let spreadsheet = Self::child_by_local_name(body, "spreadsheet")
-            .ok_or_else(|| AppError::InvalidOdsFormat("missing office:spreadsheet".to_string()))?;
-
-        let mut names = Vec::new();
-        for child in &spreadsheet.children {
-            if let XMLNode::Element(table) = child {
-                if !Self::is_local_name(&table.name, "table") {
-                    continue;
-                }
-                if let Some(name) = Self::table_name(table) {
-                    names.push(name);
-                }
-            }
-        }
-        Ok(names)
-    }
-
-    pub fn duplicate_sheet_preserving_styles(
-        original_content: &str,
-        source_name: Option<&str>,
-        source_index: Option<usize>,
-        new_sheet_name: &str,
-    ) -> Result<String, AppError> {
-        let mut root = Element::parse(original_content.as_bytes())
-            .map_err(|e| AppError::XmlParseError(e.to_string()))?;
-        let body = Self::child_mut_by_local_name(&mut root, "body")
-            .ok_or_else(|| AppError::InvalidOdsFormat("missing office:body".to_string()))?;
-        let spreadsheet = Self::child_mut_by_local_name(body, "spreadsheet")
-            .ok_or_else(|| AppError::InvalidOdsFormat("missing office:spreadsheet".to_string()))?;
-
-        let mut table_node_indices = Vec::new();
-        let mut table_names = Vec::new();
-        for (i, child) in spreadsheet.children.iter().enumerate() {
-            if let XMLNode::Element(table) = child {
-                if !Self::is_local_name(&table.name, "table") {
-                    continue;
-                }
-                table_node_indices.push(i);
-                table_names.push(Self::table_name(table).unwrap_or_else(|| "Sheet".to_string()));
-            }
-        }
-
-        if table_names.iter().any(|n| n == new_sheet_name) {
-            return Err(AppError::SheetNameAlreadyExists(new_sheet_name.to_string()));
-        }
-
-        let table_pos = if let Some(name) = source_name {
-            table_names
-                .iter()
-                .position(|n| n == name)
-                .ok_or_else(|| AppError::SheetNotFound(name.to_string()))?
-        } else if let Some(index) = source_index {
-            if index >= table_names.len() {
-                return Err(AppError::SheetNotFound(index.to_string()));
-            }
-            index
-        } else {
-            return Err(AppError::InvalidInput(
-                "missing source sheet selector".to_string(),
-            ));
-        };
-
-        let source_node_index = table_node_indices[table_pos];
-        let cloned_table = match &spreadsheet.children[source_node_index] {
-            XMLNode::Element(table) => {
-                let mut copy = table.clone();
-                Self::set_table_name(&mut copy, new_sheet_name.to_string());
-                XMLNode::Element(copy)
-            }
-            _ => {
-                return Err(AppError::InvalidOdsFormat(
-                    "source table node is not an element".to_string(),
-                ))
-            }
-        };
-
-        spreadsheet
-            .children
-            .insert(source_node_index + 1, cloned_table);
-
-        let mut out = Vec::new();
-        root.write_with_config(
-            &mut out,
-            EmitterConfig::new()
-                .perform_indent(true)
-                .write_document_declaration(true),
-        )
-        .map_err(|e| AppError::XmlParseError(e.to_string()))?;
-        String::from_utf8(out).map_err(|e| AppError::XmlParseError(e.to_string()))
-    }
-
-    fn render_table_elements(workbook: &Workbook) -> Vec<Element> {
-        let mut result = Vec::new();
-        for sheet in &workbook.sheets {
-            let mut table = Element::new("table:table");
-            table
-                .attributes
-                .insert("table:name".to_string(), sheet.name.clone());
-
-            for row in &sheet.rows {
-                let mut row_el = Element::new("table:table-row");
-                for cell in row {
-                    let mut cell_el = Element::new("table:table-cell");
-                    match &cell.value {
-                        CellValue::String(v) => {
-                            cell_el
-                                .attributes
-                                .insert("office:value-type".to_string(), "string".to_string());
-                            let mut p = Element::new("text:p");
-                            p.children.push(XMLNode::Text(v.clone()));
-                            cell_el.children.push(XMLNode::Element(p));
-                        }
-                        CellValue::Number(v) => {
-                            let n = v.to_string();
-                            cell_el
-                                .attributes
-                                .insert("office:value-type".to_string(), "float".to_string());
-                            cell_el
-                                .attributes
-                                .insert("office:value".to_string(), n.clone());
-                            let mut p = Element::new("text:p");
-                            p.children.push(XMLNode::Text(n));
-                            cell_el.children.push(XMLNode::Element(p));
-                        }
-                        CellValue::Boolean(v) => {
-                            let b = if *v { "true" } else { "false" }.to_string();
-                            cell_el
-                                .attributes
-                                .insert("office:value-type".to_string(), "boolean".to_string());
-                            cell_el
-                                .attributes
-                                .insert("office:boolean-value".to_string(), b.clone());
-                            let mut p = Element::new("text:p");
-                            p.children.push(XMLNode::Text(b));
-                            cell_el.children.push(XMLNode::Element(p));
-                        }
-                        CellValue::Empty => {}
-                    }
-                    row_el.children.push(XMLNode::Element(cell_el));
-                }
-                table.children.push(XMLNode::Element(row_el));
-            }
-            result.push(table);
-        }
-        result
-    }
-
-    fn child_mut_by_local_name<'a>(
-        element: &'a mut Element,
-        local_name: &str,
-    ) -> Option<&'a mut Element> {
-        for child in &mut element.children {
-            if let XMLNode::Element(e) = child {
-                if Self::is_local_name(&e.name, local_name) {
-                    return Some(e);
-                }
-            }
-        }
-        None
-    }
-
-    fn child_by_local_name<'a>(element: &'a Element, local_name: &str) -> Option<&'a Element> {
-        for child in &element.children {
-            if let XMLNode::Element(e) = child {
-                if Self::is_local_name(&e.name, local_name) {
-                    return Some(e);
-                }
-            }
-        }
-        None
-    }
-
-    fn table_name(table: &Element) -> Option<String> {
-        for (key, value) in &table.attributes {
-            if Self::is_local_name(key, "name") {
-                return Some(value.clone());
-            }
-        }
-        None
-    }
-
-    fn set_table_name(table: &mut Element, name: String) {
-        let key = table
-            .attributes
-            .keys()
-            .find(|k| Self::is_local_name(k, "name"))
-            .cloned()
-            .unwrap_or_else(|| "table:name".to_string());
-        table.attributes.insert(key, name);
-    }
-
-    fn is_local_name(full_name: &str, local_name: &str) -> bool {
-        full_name == local_name || full_name.rsplit(':').next() == Some(local_name)
-    }
-
     fn is_local_name_bytes(full_name: &[u8], local_name: &[u8]) -> bool {
         if full_name == local_name {
             return true;
@@ -1023,6 +574,29 @@ impl ContentXml {
             return &full_name[pos + 1..] == local_name;
         }
         false
+    }
+
+    fn find_spanned_anchor_col(
+        current_row: usize,
+        current_col: usize,
+        row_span: usize,
+        col_span: usize,
+        col_repeat: usize,
+        target_row: usize,
+        target_col: usize,
+    ) -> Option<usize> {
+        for rep in 0..col_repeat {
+            let start_col = current_col + (rep * col_span);
+            let end_col = start_col + col_span - 1;
+            if target_row >= current_row
+                && target_row < current_row + row_span
+                && target_col >= start_col
+                && target_col <= end_col
+            {
+                return Some(start_col);
+            }
+        }
+        None
     }
 
     fn find_table_blocks(content: &str) -> Result<Vec<TableBlock>, AppError> {
@@ -1531,41 +1105,6 @@ impl ContentXml {
             }
         }
         1
-    }
-
-    fn value_from_attrs(e: &BytesStart<'_>, decoder: quick_xml::encoding::Decoder) -> CellValue {
-        // Value type is represented by attributes; text is optional for numbers/booleans.
-        let mut value_type: Option<String> = None;
-        let mut value: Option<String> = None;
-        let mut boolean_value: Option<String> = None;
-
-        for attr in e.attributes().flatten() {
-            let key = attr.key.as_ref();
-            let decoded = match attr.decode_and_unescape_value(decoder) {
-                Ok(v) => v.to_string(),
-                Err(_) => continue,
-            };
-            if Self::is_local_name_bytes(key, b"value-type") {
-                value_type = Some(decoded);
-            } else if Self::is_local_name_bytes(key, b"value") {
-                value = Some(decoded);
-            } else if Self::is_local_name_bytes(key, b"boolean-value") {
-                boolean_value = Some(decoded);
-            }
-        }
-
-        match value_type.as_deref() {
-            Some("float") => value
-                .and_then(|v| v.parse::<f64>().ok())
-                .map(CellValue::Number)
-                .unwrap_or(CellValue::Empty),
-            Some("boolean") => boolean_value
-                .map(|v| v.eq_ignore_ascii_case("true"))
-                .map(CellValue::Boolean)
-                .unwrap_or(CellValue::Empty),
-            Some("string") => value.map(CellValue::String).unwrap_or(CellValue::Empty),
-            _ => CellValue::Empty,
-        }
     }
 }
 

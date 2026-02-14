@@ -17,7 +17,7 @@ tempfile = "3"
 
 [[test]]
 name = "unit"
-path = "test/unit/mod.rs"
+path = "test/mod.rs"
 
 [[test]]
 name = "blackbox"

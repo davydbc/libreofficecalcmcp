@@ -217,3 +217,55 @@ fn server_stdio_handles_notification_error_without_response() {
     let list: Value = serde_json::from_str(&lines[0]).expect("json");
     assert_eq!(list["id"], 13);
 }
+
+#[test]
+fn server_stdio_returns_parse_error_for_invalid_json() {
+    let exe = env!("CARGO_BIN_EXE_mcp-ods");
+    let mut child = Command::new(exe)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp");
+
+    let mut stdin = child.stdin.take().expect("stdin");
+    writeln!(stdin, "{{ invalid json").expect("write invalid");
+    drop(stdin);
+
+    let stdout = child.stdout.take().expect("stdout");
+    let lines: Vec<String> = BufReader::new(stdout)
+        .lines()
+        .collect::<Result<_, _>>()
+        .expect("read lines");
+    let status = child.wait().expect("wait");
+    assert!(status.success());
+    assert_eq!(lines.len(), 1);
+
+    let parse_error: Value = serde_json::from_str(&lines[0]).expect("json");
+    assert_eq!(parse_error["error"]["code"], -32700);
+}
+
+#[test]
+fn server_stdio_exits_with_error_when_stdout_pipe_is_closed() {
+    let exe = env!("CARGO_BIN_EXE_mcp-ods");
+    let mut child = Command::new(exe)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp");
+
+    // Drop parent's read end so child stdout writes fail (broken pipe).
+    let stdout = child.stdout.take().expect("stdout");
+    drop(stdout);
+
+    let mut stdin = child.stdin.take().expect("stdin");
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc":"2.0","id":21,"method":"tools/list","params":{}})
+    )
+    .expect("write request");
+    drop(stdin);
+
+    let status = child.wait().expect("wait");
+    assert!(!status.success());
+}

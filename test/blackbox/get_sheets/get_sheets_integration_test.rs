@@ -36,3 +36,17 @@ fn get_sheets_add_sheet_and_duplicate_sheet_workflow() {
 
     assert_eq!(sheets["sheets"], json!(["Base", "Datos", "Datos (copia)"]));
 }
+
+#[test]
+fn get_sheets_returns_file_not_found_for_missing_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file_path = dir.path().join("missing.ods");
+    let err = dispatch(
+        "get_sheets",
+        json!({
+            "path": file_path.to_string_lossy()
+        }),
+    )
+    .expect_err("missing");
+    assert!(err.to_string().contains("file not found"));
+}

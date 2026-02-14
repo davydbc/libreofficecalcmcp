@@ -139,6 +139,23 @@ fn duplicate_sheet_preserves_style_attributes() {
     assert_eq!(style_hits, 2);
 }
 
+#[test]
+fn duplicate_sheet_returns_error_for_missing_source() {
+    let (_dir, file_path) = new_ods_path("duplicate_missing_source.ods");
+    create_base_ods(&file_path, "Solo");
+
+    let err = dispatch(
+        "duplicate_sheet",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "source_sheet": { "name": "NoExiste" },
+            "new_sheet_name": "Copia"
+        }),
+    )
+    .expect_err("missing source");
+    assert!(err.to_string().contains("sheet not found"));
+}
+
 fn find_child_local<'a>(element: &'a Element, target: &str) -> Option<&'a Element> {
     for child in &element.children {
         if let XMLNode::Element(e) = child {

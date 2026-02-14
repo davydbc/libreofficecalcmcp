@@ -65,3 +65,20 @@ fn get_cell_value_supports_string_number_boolean_and_empty() {
     assert_eq!(c1["value"], json!({"type":"boolean","data":true}));
     assert_eq!(z9["value"], json!({"type":"empty"}));
 }
+
+#[test]
+fn get_cell_value_rejects_invalid_cell_address() {
+    let (_dir, file_path) = new_ods_path("invalid_cell_addr.ods");
+    create_base_ods(&file_path, "Hoja1");
+
+    let err = dispatch(
+        "get_cell_value",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet": { "index": 0 },
+            "cell": "22A"
+        }),
+    )
+    .expect_err("invalid address");
+    assert!(err.to_string().contains("invalid cell address"));
+}

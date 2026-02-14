@@ -53,3 +53,19 @@ fn add_sheet_rejects_duplicate_name() {
     .expect_err("duplicate");
     assert!(err.to_string().contains("already exists"));
 }
+
+#[test]
+fn add_sheet_returns_file_not_found_for_missing_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file_path = dir.path().join("missing.ods");
+    let err = dispatch(
+        "add_sheet",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet_name": "Nueva",
+            "position": "end"
+        }),
+    )
+    .expect_err("missing");
+    assert!(err.to_string().contains("file not found"));
+}

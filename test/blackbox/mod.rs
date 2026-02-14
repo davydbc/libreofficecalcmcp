@@ -1,5 +1,6 @@
 mod add_sheet;
 mod common;
+mod content_xml_raw;
 mod create_ods;
 mod dispatcher;
 mod duplicate_sheet;

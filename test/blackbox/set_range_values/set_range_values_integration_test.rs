@@ -97,3 +97,21 @@ fn set_range_values_rejects_invalid_sheet() {
     .expect_err("bad sheet");
     assert!(err.to_string().contains("sheet not found"));
 }
+
+#[test]
+fn set_range_values_rejects_invalid_start_cell() {
+    let (_dir, file_path) = new_ods_path("range_bad_start.ods");
+    create_base_ods(&file_path, "Hoja1");
+
+    let err = dispatch(
+        "set_range_values",
+        json!({
+            "path": file_path.to_string_lossy(),
+            "sheet": { "index": 0 },
+            "start_cell": "11",
+            "data": [["v"]]
+        }),
+    )
+    .expect_err("bad start");
+    assert!(err.to_string().contains("invalid cell address"));
+}

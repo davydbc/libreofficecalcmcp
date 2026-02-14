@@ -27,4 +27,17 @@ fn app_error_from_conversions_are_mapped() {
 
     let zip_err = zip::result::ZipError::FileNotFound;
     assert!(matches!(AppError::from(zip_err), AppError::ZipError(_)));
+
+    let mut reader = quick_xml::Reader::from_str("<root><a></root>");
+    let quick_xml_err = loop {
+        match reader.read_event() {
+            Ok(quick_xml::events::Event::Eof) => panic!("expected xml parse error"),
+            Ok(_) => continue,
+            Err(err) => break err,
+        }
+    };
+    assert!(matches!(
+        AppError::from(quick_xml_err),
+        AppError::XmlParseError(_)
+    ));
 }

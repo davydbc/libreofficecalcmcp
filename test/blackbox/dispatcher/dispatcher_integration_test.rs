@@ -1,4 +1,5 @@
 use crate::common::dispatch;
+use mcp_ods::mcp::dispatcher::Dispatcher;
 use serde_json::json;
 
 #[test]
@@ -28,4 +29,37 @@ fn dispatcher_returns_clear_errors_for_invalid_inputs() {
     )
     .expect_err("invalid mode");
     assert!(bad_mode.to_string().contains("mode=matrix"));
+}
+
+#[test]
+fn dispatcher_supports_initialized_notifications() {
+    let out = Dispatcher::dispatch("initialized", None).expect("initialized");
+    assert!(out.is_null());
+
+    let out = Dispatcher::dispatch("notifications/initialized", None).expect("initialized ns");
+    assert!(out.is_null());
+}
+
+#[test]
+fn dispatcher_tools_call_validates_missing_payload_fields() {
+    let missing_params = Dispatcher::dispatch("tools/call", None).expect_err("missing params");
+    assert!(missing_params.to_string().contains("missing params"));
+
+    let missing_tool = Dispatcher::dispatch("tools/call", Some(json!({}))).expect_err("name");
+    assert!(missing_tool.to_string().contains("missing tool name"));
+}
+
+#[test]
+fn dispatcher_allows_direct_tool_invocation_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file_path = dir.path().join("direct_call.ods");
+
+    Dispatcher::dispatch(
+        "create_ods",
+        Some(json!({ "path": file_path.to_string_lossy(), "overwrite": true })),
+    )
+    .expect("create");
+    let out = Dispatcher::dispatch("get_sheets", Some(json!({ "path": file_path.to_string_lossy() })))
+        .expect("get_sheets");
+    assert_eq!(out["sheets"], json!(["Hoja1"]));
 }

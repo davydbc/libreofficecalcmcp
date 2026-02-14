@@ -9,3 +9,10 @@ fn json_roundtrip_works() {
     let output = JsonUtil::to_value(parsed).expect("serialize");
     assert_eq!(output, value);
 }
+
+#[test]
+fn json_from_value_returns_invalid_input_error() {
+    let value = json!({ "type": "number", "data": "not_a_number" });
+    let err = JsonUtil::from_value::<CellValue>(value).expect_err("invalid");
+    assert!(err.to_string().contains("invalid input"));
+}

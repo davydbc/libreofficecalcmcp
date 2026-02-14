@@ -171,3 +171,224 @@ fn rename_first_sheet_name_raw_requires_table_name_attribute() {
     let err = ContentXml::rename_first_sheet_name_raw(invalid, "New").expect_err("missing name");
     assert!(matches!(err, AppError::InvalidOdsFormat(_)));
 }
+
+#[test]
+fn set_cell_value_preserving_styles_raw_supports_self_closing_table() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1"/>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        1,
+        1,
+        &CellValue::String("X".to_string()),
+    )
+    .expect("set");
+
+    assert!(updated.contains("<table:table table:name=\"Hoja1\">"));
+    assert!(updated.contains("table:number-rows-repeated=\"1\""));
+    assert!(updated.contains("<text:p>X</text:p>"));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_updates_selected_sheet_index() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="S1"><table:table-row><table:table-cell/></table:table-row></table:table>
+    <table:table table:name="S2"><table:table-row><table:table-cell/></table:table-row></table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        1,
+        0,
+        0,
+        &CellValue::String("S2_ONLY".to_string()),
+    )
+    .expect("set");
+
+    assert!(updated.contains("S2_ONLY"));
+    // First sheet remains unchanged (only empty A1 cell).
+    assert_eq!(updated.matches("S2_ONLY").count(), 1);
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_splits_repeated_empty_cell() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row>
+        <table:table-cell table:number-columns-repeated="5"/>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        0,
+        2,
+        &CellValue::String("M".to_string()),
+    )
+    .expect("set");
+
+    assert!(updated.contains("table:number-columns-repeated=\"2\""));
+    assert!(updated.contains("<text:p>M</text:p>"));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_rejects_repeated_non_empty_cell() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row>
+        <table:table-cell table:number-columns-repeated="3" office:value-type="string"><text:p>v</text:p></table:table-cell>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        0,
+        1,
+        &CellValue::String("x".to_string()),
+    )
+    .expect_err("must fail");
+    assert!(err
+        .to_string()
+        .contains("cannot safely edit repeated non-empty cell"));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_preserves_style_attributes() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row>
+        <table:table-cell table:style-name="ce5"/>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        0,
+        0,
+        &CellValue::String("Styled".to_string()),
+    )
+    .expect("set");
+
+    assert!(updated.contains("table:style-name=\"ce5\""));
+    assert!(updated.contains("<text:p>Styled</text:p>"));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_supports_number_boolean_and_empty() {
+    let base = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row><table:table-cell/></table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let number = ContentXml::set_cell_value_preserving_styles_raw(
+        base,
+        0,
+        0,
+        0,
+        &CellValue::Number(3.5),
+    )
+    .expect("number");
+    assert!(number.contains("office:value-type=\"float\""));
+    assert!(number.contains("office:value=\"3.5\""));
+
+    let boolean = ContentXml::set_cell_value_preserving_styles_raw(
+        &number,
+        0,
+        0,
+        0,
+        &CellValue::Boolean(false),
+    )
+    .expect("boolean");
+    assert!(boolean.contains("office:value-type=\"boolean\""));
+    assert!(boolean.contains("office:boolean-value=\"false\""));
+
+    let empty = ContentXml::set_cell_value_preserving_styles_raw(
+        &boolean,
+        0,
+        0,
+        0,
+        &CellValue::Empty,
+    )
+    .expect("empty");
+    assert!(empty.contains("<table:table-cell"));
+    assert!(!empty.contains("office:value-type=\"boolean\""));
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_splits_repeated_row_and_updates_middle_copy() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row table:number-rows-repeated="3">
+        <table:table-cell table:number-columns-repeated="2"/>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let updated = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        1,
+        1,
+        &CellValue::String("MID".to_string()),
+    )
+    .expect("set");
+
+    assert!(updated.contains("<text:p>MID</text:p>"));
+    assert_eq!(updated.matches("<text:p>MID</text:p>").count(), 1);
+}
+
+#[test]
+fn set_cell_value_preserving_styles_raw_returns_error_for_covered_cell_in_repeated_row() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:spreadsheet>
+    <table:table table:name="Hoja1">
+      <table:table-row table:number-rows-repeated="2">
+        <table:covered-table-cell/>
+        <table:table-cell/>
+      </table:table-row>
+    </table:table>
+  </office:spreadsheet></office:body>
+</office:document-content>"#;
+
+    let err = ContentXml::set_cell_value_preserving_styles_raw(
+        original,
+        0,
+        0,
+        0,
+        &CellValue::String("X".to_string()),
+    )
+    .expect_err("covered");
+    assert!(err.to_string().contains("covered cell"));
+}

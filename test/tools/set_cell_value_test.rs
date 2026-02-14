@@ -81,3 +81,74 @@ fn set_cell_value_returns_error_for_invalid_sheet_index() {
     .expect_err("sheet error");
     assert!(err.to_string().contains("sheet not found"));
 }
+
+#[test]
+fn set_cell_value_supports_number_boolean_and_empty_values() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("set_cell_typed_values.ods");
+
+    create_ods::handle(json!({ "path": path.to_string_lossy(), "overwrite": true }))
+        .expect("create");
+
+    set_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "name": "Hoja1" },
+        "cell": "C3",
+        "value": { "type": "number", "data": 123.5 }
+    }))
+    .expect("set number");
+    let number = get_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "name": "Hoja1" },
+        "cell": "C3"
+    }))
+    .expect("get number");
+    assert_eq!(number["value"], json!({"type":"number","data":123.5}));
+
+    set_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "name": "Hoja1" },
+        "cell": "D4",
+        "value": { "type": "boolean", "data": true }
+    }))
+    .expect("set bool");
+    let boolean = get_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "name": "Hoja1" },
+        "cell": "D4"
+    }))
+    .expect("get bool");
+    assert_eq!(boolean["value"], json!({"type":"boolean","data":true}));
+
+    set_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "name": "Hoja1" },
+        "cell": "D4",
+        "value": { "type": "empty" }
+    }))
+    .expect("set empty");
+    let empty = get_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "name": "Hoja1" },
+        "cell": "D4"
+    }))
+    .expect("get empty");
+    assert_eq!(empty["value"], json!({"type":"empty"}));
+}
+
+#[test]
+fn set_cell_value_returns_error_for_invalid_cell_address() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("set_cell_bad_address.ods");
+
+    create_ods::handle(json!({ "path": path.to_string_lossy(), "overwrite": true }))
+        .expect("create");
+    let err = set_cell_value::handle(json!({
+        "path": path.to_string_lossy(),
+        "sheet": { "index": 0 },
+        "cell": "99Z",
+        "value": { "type": "string", "data": "x" }
+    }))
+    .expect_err("address error");
+    assert!(err.to_string().contains("invalid cell address"));
+}

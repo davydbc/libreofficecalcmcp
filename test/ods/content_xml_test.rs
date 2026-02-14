@@ -110,3 +110,33 @@ fn set_cell_value_preserving_styles_raw_does_not_materialize_many_rows() {
     assert!(updated.contains("table:number-rows-repeated=\"6\""));
     assert!(updated.contains("table:number-columns-repeated=\"7\""));
 }
+
+#[test]
+fn resolve_merged_anchor_raw_maps_covered_cell_to_top_left_anchor() {
+    let original = r#"<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2">
+  <office:body>
+    <office:spreadsheet>
+      <table:table table:name="Hoja1">
+        <table:table-row table:number-rows-repeated="4"/>
+        <table:table-row>
+          <table:table-cell table:number-rows-spanned="2" office:value-type="string">
+            <text:p>MERGED</text:p>
+          </table:table-cell>
+          <table:table-cell/>
+        </table:table-row>
+        <table:table-row>
+          <table:covered-table-cell/>
+          <table:table-cell/>
+        </table:table-row>
+      </table:table>
+    </office:spreadsheet>
+  </office:body>
+</office:document-content>"#;
+
+    let anchor = ContentXml::resolve_merged_anchor_raw(original, 0, 5, 0).expect("resolve");
+    assert_eq!(anchor, (4, 0));
+
+    let regular = ContentXml::resolve_merged_anchor_raw(original, 0, 5, 1).expect("resolve");
+    assert_eq!(regular, (5, 1));
+}

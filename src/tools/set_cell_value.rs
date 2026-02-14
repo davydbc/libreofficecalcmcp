@@ -43,11 +43,18 @@ pub fn handle(params: Value) -> Result<Value, AppError> {
     let (sheet_index, sheet_name) = resolve_sheet(&sheet_names, input.sheet)?;
     let address = CellAddress::parse(&input.cell)?;
 
-    let updated_content = ContentXml::set_cell_value_preserving_styles_raw(
+    let (target_row, target_col) = ContentXml::resolve_merged_anchor_raw(
         &original_content,
         sheet_index,
         address.row,
         address.col,
+    )?;
+
+    let updated_content = ContentXml::set_cell_value_preserving_styles_raw(
+        &original_content,
+        sheet_index,
+        target_row,
+        target_col,
         &input.value,
     )?;
     OdsFile::write_content_xml(&path, &updated_content)?;
